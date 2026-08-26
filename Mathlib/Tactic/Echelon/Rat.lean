@@ -58,6 +58,15 @@ def mkIntNumeral {u : Level} (α : Q(Type u)) (i : Int) : MetaM Q($α) := do
   else
     return n
 
+/-- The integer ring operations, with zero tested modulo the characteristic `p`. -/
+def intRingOps (p : Nat) : RingOps Int where
+  zero := 0
+  one := 1
+  mul := (· * ·)
+  sub := (· - ·)
+  divExact := (· / ·)
+  isZero := if p == 0 then (· == 0) else fun v => v % p == 0
+
 /-- The rational model of a ring: entries evaluate to rational numerals, denominators
 are cleared by row scaling, and the elimination runs on integer values. It applies to
 every ring, as the fallback model. -/
@@ -73,18 +82,11 @@ def ratProducer (R : Expr) : MetaM Producer := do
   -- the numeral to a literal
   let some p := (← whnfD (← instantiateMVars pE)).rawNatLit?
     | throwError "the characteristic of the element type is not a literal{indentExpr α}"
-  let ops : RingOps Int := {
-    zero := 0
-    one := 1
-    mul := (· * ·)
-    sub := (· - ·)
-    divExact := (· / ·)
-    isZero := if p == 0 then (· == 0) else fun v => v % p == 0 }
   let prepare (entries : Array (Array Expr)) :
       MetaM (Array (Array Int) × (BareissData Int → BareissData Int)) := do
     let ratRows ← entries.mapM (·.mapM (evalRatEntry (p == 0)))
     let (values, scales) := scaleRowsIntegral ratRows
     return (values, restoreScaling scales)
-  return mkProducer ops prepare (mkIntNumeral α)
+  return mkProducer (intRingOps p) prepare (mkIntNumeral α)
 
 end Mathlib.Tactic.Echelon

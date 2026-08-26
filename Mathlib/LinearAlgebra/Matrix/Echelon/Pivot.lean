@@ -67,6 +67,13 @@ theorem eq_top_iff [LT m] [LT n] {i : m} (hA : A.IsPivotedBy l) :
     simpa [funext_iff] using fun j => h j (WithTop.coe_lt_top j)
   | coe c => simpa using fun h0 => (hA.isPivotEntry i).2 c hc (congrFun h0 c)
 
+theorem map [LT m] [LT n] {S F : Type*} [Zero S] [FunLike F R S] [ZeroHomClass F R S]
+    (hA : A.IsPivotedBy l) (f : F) (hf : Function.Injective f) :
+    (A.map f).IsPivotedBy l := by
+  refine ⟨hA.isRowEchelon.map f hf, fun i => ⟨fun j hj => ?_, fun c hc h0 => ?_⟩⟩
+  · exact (map_eq_zero_iff f hf).mpr ((hA.isPivotEntry i).1 j hj)
+  · exact (hA.isPivotEntry i).2 c hc ((map_eq_zero_iff f hf).mp h0)
+
 variable [LinearOrder n]
 
 theorem lt_of_lt_of_ne_top [LT m] {i₁ i₂ : m}

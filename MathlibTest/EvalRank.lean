@@ -4,6 +4,7 @@ import Mathlib.Tactic.NormRank
 
 import Mathlib.Algebra.Field.ZMod
 import Mathlib.Algebra.Polynomial.Basic
+import Mathlib.Data.Complex.Basic
 import Mathlib.Data.Real.Basic
 import Mathlib.LinearAlgebra.Matrix.Cartan
 import Mathlib.NumberTheory.Zsqrtd.GaussianInt
@@ -131,6 +132,49 @@ example : Matrix.rank (R := GaussianInt) !![0, ⟨0, 1⟩; ⟨0, 1⟩, 1] = 2 :=
 -- handling Zsqrtd.sqrtd def without rewriting
 example : Matrix.rank (R := GaussianInt) !![Zsqrtd.sqrtd, ⟨0, 1⟩] = 1 := by eval_rank
 
+/-! ## Characteristic-zero transport: integer and rational entries in `ℝ` and `ℂ`
+
+The element types have no kernel-decidable equality; the certificate is produced over
+`ℤ` or `ℚ` and transported along the cast ring homomorphism. -/
+
+example : Matrix.rank (R := ℝ) !![1, 2; 3, 4] = 2 := by eval_rank
+
+example : Matrix.rank (R := ℝ) !![1, 2; 2, 4] = 1 := by eval_rank
+
+-- compound integer entries
+example : Matrix.rank (R := ℝ) !![1 - 1, 2, 3] = 1 := by eval_rank
+
+-- a zero pivot forcing a swap
+example : Matrix.rank (R := ℝ) !![0, 1; 1, 0; 1, 1] = 2 := by eval_rank
+
+example : Matrix.rank (R := ℝ) !![] = 0 := by eval_rank
+
+example : Matrix.rank (R := ℂ) !![2, -1; -4, 2] = 1 := by eval_rank
+
+example : Matrix.rank (R := ℝ) !![1/2, 1; 1, 1] = 2 := by eval_rank
+
+-- row 2 = (1/2) * row 1, certified over ℚ
+example : Matrix.rank (R := ℝ) !![1/2, 1/3; 1/4, 1/6] = 1 := by eval_rank
+
+-- negative fractional entries
+example : Matrix.rank (R := ℝ) !![-1/2, 1; 1, -2] = 1 := by eval_rank
+
+-- a characteristic-zero non-field: integer entries transport along `Int.castRingHom`
+open Polynomial in
+example : Matrix.rank (R := ℚ[X]) !![1, 2; 2, 4] = 1 := by eval_rank
+
+-- consecutive overlapping swaps through the transported certificate, crossed with
+-- row scaling
+example : Matrix.rank (R := ℝ)
+    !![1/2, 1/2, 1/2, 1/2;
+       2, 2, 2, 3;
+       3, 4, 5, 6;
+       4, 5, 7, 8] = 4 := by
+  eval_rank
+
+-- mixed integer and rational entries are certified over ℚ
+example : Matrix.rank (R := ℂ) !![2/3, 1; 1, 3/2] = 1 := by eval_rank
+
 /-! ## Unfolding, rewrites, and simplifications -/
 
 -- rewrite
@@ -175,20 +219,17 @@ end Binet
 
 /-! ## Behavior inside `simp` -/
 
--- mixed element types in one goal: the ℤ literal is rewritten while the unsupported ℝ
--- literal is skipped, without an error; the ℝ rank is then evaluated by recognizing the
--- identity matrix
+-- mixed element types in one goal: the ℤ literal is rewritten directly and the ℝ
+-- literal through the cast transport
 example :
     Matrix.rank (R := ℤ) !![1, 2; 2, 4] = Matrix.rank (R := ℝ) !![1, 0; 0, 1] - 1 := by
-  simp only [norm_rank]
-  simp [← Matrix.one_fin_two, Matrix.rank_one]
+  simp [norm_rank]
 
 -- a similar example via `eval_rank`, plus testing that the tactic doesn't hard commit to
 -- the first occurrence of Matrix.rank
 example :
     Matrix.rank (R := ℝ) !![1, 0; 0, 1] = Matrix.rank (R := ℤ) !![1, 2; 2, 4] + 1 := by
   eval_rank
-  simp [← Matrix.one_fin_two, Matrix.rank_one]
 
 -- a literal with symbolic entries is skipped instead of reporting an error
 example (a : ℚ) (h : Matrix.rank (R := ℚ) !![a, 1; 1, a] = 2) :
@@ -260,21 +301,21 @@ trace: [Tactic.evalRank] expected the element type to be a domain
 #guard_msgs in
 example : Matrix.rank (R := ZMod 4) !![1, 2; 3, 4] = 2 := by eval_rank
 
-/-! ### Possible extensions
-
-Rejected today; extensions of the tactic could support these inputs. -/
-
--- Requires a more general cert checker that works for rational literals in types like ℝ
+-- neither kernel-decidable nor of characteristic zero
+open Polynomial in
 /--
 error: `eval_rank` made no progress.
 Additional information may be available using `set_option trace.Tactic.evalRank true`.
 ---
-trace: [Tactic.evalRank] equality in the element type does not reduce in the kernel
-      ℝ
-      !![1, 2; 3, 4]
+trace: [Tactic.evalRank] equality with zero in the element type is undecidable and the characteristic is not zero
+      !![1, 2; 2, 4]
 -/
 #guard_msgs in
-example : Matrix.rank (R := ℝ) !![1, 2; 3, 4] = 2 := by eval_rank
+example : Matrix.rank (R := Polynomial (ZMod 7)) !![1, 2; 2, 4] = 2 := by eval_rank
+
+/-! ### Possible extensions
+
+Rejected today; extensions of the tactic could support these inputs. -/
 
 -- Requires computable polynomial ops in the kernel
 open Polynomial in
@@ -282,9 +323,8 @@ open Polynomial in
 error: `eval_rank` made no progress.
 Additional information may be available using `set_option trace.Tactic.evalRank true`.
 ---
-trace: [Tactic.evalRank] equality in the element type does not reduce in the kernel
-      ℚ[X]
-      !![X, 1; 1, X]
+trace: [Tactic.evalRank] the following entry cannot be simplified to a numeral
+      X
 -/
 #guard_msgs in
 example : Matrix.rank (R := ℚ[X]) !![X, 1; 1, X] = 2 := by eval_rank

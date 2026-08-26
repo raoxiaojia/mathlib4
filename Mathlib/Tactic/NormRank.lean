@@ -6,7 +6,6 @@ Authors: Rao Xiaojia
 module
 
 public import Mathlib.Tactic.Echelon.Bareiss
-public import Mathlib.Tactic.Echelon.Parsing
 
 /-!
 # `eval_rank`: rank of matrix literals by Bareiss elimination
@@ -18,33 +17,23 @@ the rank of a matrix literal with non-symbolic entries through an
 
 public meta section
 
-open Lean Meta Elab Qq
+open Lean Meta Elab
 
 namespace Mathlib.Tactic.Echelon
 
-/-- Rewrite `Matrix.rank A` to the pivot count of the Bareiss decomposition of the matrix
-literal `A`. -/
-def normalizeRank (e A : Expr) (m n : Nat) (R : Expr) (entries : Array (Array Expr)) :
-    MetaM Simp.Result := do
-  let u ← getDecLevel R
-  have α : Q(Type u) := R
-  let res ← mkBareissDecomposition A m n α entries
+/-- Rewrite `Matrix.rank A` to the pivot count of the decomposition certificate of the
+matrix literal `A`; `none` when no certificate is produced. -/
+def normalizeRank (e A : Expr) : MetaM (Option Simp.Result) := do
+  let some res ← mkBareissDecomposition? A | return none
   let pf ← mkAppM ``Echelon.Decomposition.rank_eq #[res.cert]
   let k := mkNatLit res.data.pivot.size
-  return { expr := k, proof? := some (← mkExpectedTypeHint pf (← mkEq e k)) }
+  return some { expr := k, proof? := some (← mkExpectedTypeHint pf (← mkEq e k)) }
 
 /-- Core of the `norm_rank` simproc. -/
 def normRankCore : Simp.Simproc := fun e => do
   let_expr Matrix.rank _ _ _ _ _ A := e | return .continue
-  let A ← instantiateMVars A
-  let some (m, n, R, entries) ← matchMatrixLit? A
-    | trace[Tactic.evalRank] "not a closed matrix literal{indentExpr A}"
-      return .continue
-  match ← checkBareissApplicable R with
-  | .ok _ => return .done (← normalizeRank e A m n R entries)
-  | .error err =>
-    trace[Tactic.evalRank] "{err}{indentExpr A}"
-    return .continue
+  let some r ← normalizeRank e A | return .continue
+  return .done r
 
 end Mathlib.Tactic.Echelon
 
@@ -61,7 +50,8 @@ simproc_decl norm_rank (Matrix.rank _) := fun e => do
 /--
 `eval_rank` evaluates the rank of matrices with non-symbolic entries.
 
-The element type must be a commutative domain with kernel-decidable equality.
+The element type must be a commutative domain with kernel-decidable equality against
+zero, or of characteristic zero.
 Terms skipped can be viewed by using `set_option trace.Tactic.evalRank true`.
 -/
 elab (name := evalRank) "eval_rank" : tactic => do

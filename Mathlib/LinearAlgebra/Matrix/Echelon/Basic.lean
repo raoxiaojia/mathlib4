@@ -54,6 +54,13 @@ theorem IsRowEchelon.row_eq_zero_of_lt [LT m] [LT n] {i₁ i₂ : m} (he : A.IsR
   funext j
   exact he hlt fun j₁ _ => congrFun h0 j₁
 
+/-- Row echelon form transports along an injective zero-preserving map. -/
+theorem IsRowEchelon.map [LT m] [LT n] {S F : Type*} [Zero S] [FunLike F R S]
+    [ZeroHomClass F R S] (he : A.IsRowEchelon) (f : F) (hf : Function.Injective f) :
+    (A.map f).IsRowEchelon :=
+  fun _ _ hlt _ hz => (map_eq_zero_iff f hf).mpr <|
+    he hlt fun j₁ hj₁ => (map_eq_zero_iff f hf).mp (hz j₁ hj₁)
+
 /-! ### Leading entries -/
 
 /-- `c` is the leading position of row `i`. -/
