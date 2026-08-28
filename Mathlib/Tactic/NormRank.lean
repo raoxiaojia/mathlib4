@@ -6,7 +6,7 @@ Authors: Rao Xiaojia
 module
 
 public import Mathlib.Tactic.Echelon.Bareiss
-public import Mathlib.Tactic.Echelon.Parsing
+public import Mathlib.Tactic.Matrix.Parsing
 
 /-!
 # `eval_rank`: rank of matrix literals by Bareiss elimination

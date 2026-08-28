@@ -28,7 +28,7 @@ public meta section
 
 open Lean Meta
 
-namespace Mathlib.Tactic.Echelon
+namespace Mathlib.Tactic.Matrix
 
 /-- Match a closed `Fin`-indexed matrix literal: its dimensions, element type, and rows of
 entries. -/
@@ -51,4 +51,4 @@ def matchMatrixLit? (A : Expr) : MetaM (Option (Nat × Nat × Expr × Array (Arr
   unless entries.all (·.size == n) do return none
   return some (m, n, R, entries)
 
-end Mathlib.Tactic.Echelon
+end Mathlib.Tactic.Matrix
