@@ -1,0 +1,76 @@
+import Mathlib.Tactic.Matrix.Mul
+import Mathlib.Data.Real.Basic
+import Mathlib.Data.Complex.Basic
+
+open Matrix
+
+example : (!![1, 2; 3, 4] : Matrix (Fin 2) (Fin 2) ℚ) * !![5, 6; 7, 8] = !![19, 22; 43, 50] := by
+  norm_num
+
+example : (!![1 / 2, 1; 0, 3] : Matrix (Fin 2) (Fin 2) ℝ) * !![2, 0; 1, 1] = !![2, 1; 3, 3] := by
+  simp [↓ norm_matmul]
+
+example : (!![1, 2, 3; 4, 5, 6] : Matrix (Fin 2) (Fin 3) ℂ) *
+    (!![1, 0; 0, 1; 1, 1] : Matrix (Fin 3) (Fin 2) ℂ) = !![4, 5; 10, 11] := by
+  simp [↓ norm_matmul]
+
+-- chains normalise inside-out
+example : (!![1, 1; 0, 1] : Matrix (Fin 2) (Fin 2) ℚ) * !![1, 1; 0, 1] * !![1, 1; 0, 1] =
+    !![1, 3; 0, 1] := by
+  simp [↓ norm_matmul]
+
+-- the right-hand side is normalized as well
+example : (!![1, 2; 3, 4] : Matrix (Fin 2) (Fin 2) ℚ) * !![5, 6; 7, 8] =
+    !![38 / 2, 22; 43, 25 * 2] := by
+  simp only [↓ norm_matmul]
+  norm_num
+
+-- degenerate dimensions
+example : (!![,,,] : Matrix (Fin 0) (Fin 3) ℚ) *
+    (!![1, 2; 3, 4; 5, 6] : Matrix (Fin 3) (Fin 2) ℚ) = !![,,] := by
+  simp only [↓ norm_matmul]
+
+example : (!![1, 2; 3, 4] : Matrix (Fin 2) (Fin 2) ℚ) * !![;;] = !![;;] := by
+  simp only [↓ norm_matmul]
+
+-- symbolic entries are skipped
+example (x : ℚ) :
+    (!![x, 1; 0, 1] : Matrix (Fin 2) (Fin 2) ℚ) * !![1, 0; 0, 1] = !![x, 1; 0, 1] := by
+  fail_if_success simp only [↓ norm_matmul]
+  simp
+
+set_option Elab.async false in
+#time example : (!![1, 2, 3, 4, 5; 6, 7, 8, 9, 10; 11, 12, 13, 14, 15; 16, 17, 18, 19, 20;
+      21, 22, 23, 24, 25] : Matrix (Fin 5) (Fin 5) ℝ) *
+    !![1, 0, 0, 0, 1; 0, 1, 0, 0, 1; 0, 0, 1, 0, 1; 0, 0, 0, 1, 1; 1, 1, 1, 1, 1] =
+    !![6, 7, 8, 9, 15; 16, 17, 18, 19, 40; 26, 27, 28, 29, 65; 36, 37, 38, 39, 90;
+      46, 47, 48, 49, 115] := by
+  simp only [norm_matmul]
+
+-- a chain of four factors
+example : (!![5, 3, 1, 8, 6;
+      1, 9, 8, 7, 6;
+      6, 6, 6, 6, 6;
+      2, 3, 4, 5, 6;
+      7, 9, 2, 4, 6] : Matrix (Fin 5) (Fin 5) ℝ) *
+    !![9, 7, 5, 3, 1;
+      5, 4, 3, 2, 1;
+      1, 1, 1, 1, 1;
+      6, 7, 8, 9, 1;
+      2, 4, 6, 8, 1] *
+    !![4, 2, 9, 7, 5;
+      9, 8, 7, 6, 5;
+      5, 5, 5, 5, 5;
+      1, 2, 3, 4, 5;
+      6, 8, 1, 3, 5] *
+    !![8, 6, 4, 2, 9;
+      4, 3, 2, 1, 9;
+      9, 9, 9, 9, 9;
+      5, 6, 7, 8, 9;
+      1, 3, 5, 7, 9] =
+    !![75725, 76551, 77377, 78203, 124029;
+      74443, 75198, 75953, 76708, 122265;
+      81378, 82134, 82890, 83646, 132894;
+      53654, 54267, 54880, 55493, 88362;
+      80956, 81642, 82328, 83014, 131634] := by
+  simp [↓ norm_matmul]
