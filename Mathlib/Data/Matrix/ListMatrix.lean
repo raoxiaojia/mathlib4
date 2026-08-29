@@ -11,12 +11,13 @@ import Mathlib.Data.List.GetD
 /-!
 # List-based representation of matrices and operations on them
 
-This file defines a 2D-list based representation of matrices (listMatrix), and some associated
-operations on them. These evaluate more efficiently in the kernel.
+This file defines a representation of matrices as lists of rows, `List (List α)`, and some
+associated operations on them. The definitions recurse on the dimensions, so on literals they
+reduce in the kernel to the `vecCons` form of the `!![…]` notation.
 
 ## Main definitions
-* `Matrix.ofLists`: convert a listMatrix to a `Matrix`.
-* `ListMatrix.mul`: multiplying two listMatrix.
+* `Matrix.ofLists`: convert a list of rows to a `Matrix`.
+* `ListMatrix.mul`: multiplying two lists of rows.
 
 ## Main results
 * `Matrix.ofLists_mul`: `ListMatrix.mul` agrees with the matrix product under `Matrix.ofLists`.
@@ -63,7 +64,7 @@ theorem Matrix.ofLists_apply [Zero α] (m n : ℕ) (rows : List (List α)) (i : 
     ofLists m n rows i = (rows.getD i []).toVec n := by
   induction m generalizing rows with
   | zero => exact i.elim0
-  | succ m ih => cases rows <;> exact Fin.cases rfl (fun i => ih _ i) i
+  | succ m ih => cases rows <;> exact Fin.cases rfl (ih _) i
 
 /-- The dot product of the first `n` entries of two lists. -/
 @[expose] def List.dotProduct [Zero α] [Add α] [Mul α] (n : ℕ) (l₁ l₂ : List α) : α :=
@@ -76,26 +77,21 @@ theorem List.dotProduct_eq [NonUnitalNonAssocSemiring α] (n : ℕ) (l₁ l₂ :
   | zero => simp [List.dotProduct]
   | succ n ih => cases l₁ <;> cases l₂ <;> simp [List.toVec, List.dotProduct, ← ih]
 
-theorem List.getD_takeD {n j : ℕ} (l : List α) (d : α) (hj : j < n) :
-    (l.takeD n d).getD j d = l.getD j d := by
-  induction n generalizing l j <;> cases j <;> cases l <;> simp_all [List.takeD]
-
 /-- The transpose of a list of rows as `n` rows, where row `j` collects the `j`-th entries of
-the input rows padded with `0`. -/
+the input rows padded with `0`. Unlike `List.transpose`, this reduces in the kernel. -/
 @[expose] def ListMatrix.transpose [Zero α] (n : ℕ) (rows : List (List α)) : List (List α) :=
   match rows with
   | [] => List.replicate n []
-  | l :: rows => List.zipWith (· :: ·) (l.takeD n 0) (transpose n rows)
+  | l :: rows => List.zipWith (· :: ·) ((l.rightpad n 0).take n) (transpose n rows)
 
 @[simp]
 theorem ListMatrix.length_transpose [Zero α] (n : ℕ) (rows : List (List α)) :
     (transpose n rows).length = n := by
-  induction rows with
-  | nil => simp [transpose]
-  | cons l rows ih => simp [transpose, ih]
+  induction rows <;> simp [transpose, *]
+  omega
 
-theorem ListMatrix.getD_transpose [Zero α] {n j : ℕ} (rows : List (List α)) (hj : j < n)
-    (i : ℕ) : ((transpose n rows).getD j []).getD i 0 = (rows.getD i []).getD j 0 := by
+theorem ListMatrix.getD_transpose [Zero α] {n j : ℕ} (rows : List (List α)) (i : ℕ)
+    (hj : j < n) : ((transpose n rows).getD j []).getD i 0 = (rows.getD i []).getD j 0 := by
   induction rows generalizing i with
   | nil => simp [transpose, hj]
   | cons l rows ih =>
@@ -103,36 +99,34 @@ theorem ListMatrix.getD_transpose [Zero α] {n j : ℕ} (rows : List (List α)) 
     · cases i with
       | zero =>
         simp only [List.getD_cons_zero]
-        rw [← List.getD_takeD l 0 hj, List.getD_eq_getElem]
+        grind [List.rightpad]
       | succ i =>
         simp only [List.getD_cons_succ]
         rw [← ih, List.getD_eq_getElem (n := j)]
-    · simp [length_transpose, hj]
+    · simp [hj]
+      omega
 
 @[simp]
 theorem Matrix.ofLists_transpose [Zero α] (m n : ℕ) (rows : List (List α)) :
     ofLists n m (ListMatrix.transpose n rows) = (ofLists m n rows)ᵀ := by
   ext j i
-  rw [transpose_apply, ofLists_apply, ofLists_apply, List.toVec_apply, List.toVec_apply]
-  exact ListMatrix.getD_transpose rows j.isLt i
+  simpa using ListMatrix.getD_transpose rows i j.isLt
 
-/-- Multiplying two list-representation of matrices, where the second matrix is interpreted
-as an `m × n` matrix. -/
+/-- The product of two lists of rows, with `A` interpreted as having `m` columns and `B` as an
+`m × n` matrix. -/
 @[expose] def ListMatrix.mul [Zero α] [Add α] [Mul α] (m n : ℕ) (A B : List (List α)) :
     List (List α) :=
   let BT := transpose n B
-  A.map fun rowA => BT.map (rowA.dotProduct m)
+  A.map fun rowA ↦ BT.map (rowA.dotProduct m)
 
 @[simp]
 theorem Matrix.ofLists_mul [NonUnitalNonAssocSemiring α] (l m n : ℕ) (A B : List (List α)) :
     ofLists l n (ListMatrix.mul m n A B) = ofLists l m A * ofLists m n B := by
   ext i j
   rw [mul_apply', ofLists_apply, ofLists_apply, List.toVec_apply]
-  have hcol : (fun k => ofLists m n B k j) = ((ListMatrix.transpose n B).getD j []).toVec m := by
+  have hcol : (fun k ↦ ofLists m n B k j) = ((ListMatrix.transpose n B).getD j []).toVec m := by
     funext k
-    rw [ofLists_apply, List.toVec_apply, List.toVec_apply, ListMatrix.getD_transpose B j.isLt]
+    rw [ofLists_apply, List.toVec_apply, List.toVec_apply, ListMatrix.getD_transpose B k j.isLt]
   rw [hcol, ← List.dotProduct_eq, ListMatrix.mul]
   simp only [List.getD_eq_getElem?_getD, List.getElem?_map]
-  cases A[i]? with
-  | none => simp [List.dotProduct, -List.dotProduct_eq]
-  | some r => simp
+  cases A[i]? <;> simp [List.dotProduct]
