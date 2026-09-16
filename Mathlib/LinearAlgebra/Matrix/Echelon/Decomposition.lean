@@ -19,6 +19,7 @@ public import Mathlib.LinearAlgebra.Matrix.Echelon.Pivot
 ## Main results
 
 - `Echelon.Decomposition.rank_eq`: `A.rank` is the pivot count of any certificate for `A`.
+- `Echelon.Decomposition.det_eq`: `A.det` from the diagonal products of a certificate for `A`.
 
 ## Tags
 
@@ -59,5 +60,17 @@ theorem Decomposition.rank_eq {A : Matrix m n R} (cert : Decomposition A) :
   rw [← cert.isPivotedBy.rank_eq,
     cert.L.rank_mul_eq_right_of_isLowerTriangular _ cert.L_lowerTriangular cert.L_diag_ne_zero]
   exact (A.rank_submatrix cert.σ (.refl _)).symm
+
+theorem Decomposition.det_eq {A : Matrix m m R} (cert : Decomposition A) {U : Matrix m m R}
+    {l u s v : R} (hU : cert.L * A.submatrix cert.σ id = U) (hl : ∏ i, cert.L i i = l)
+    (hu : ∏ i, U i i = u) (hs : ((Equiv.Perm.sign cert.σ : ℤ) : R) = s) (hv : l * (s * v) = u) :
+    A.det = v := by
+  have hl0 : l ≠ 0 := hl ▸ Finset.prod_ne_zero_iff.mpr fun i _ => cert.L_diag_ne_zero i
+  have hs0 : s ≠ 0 := by
+    rw [← hs]
+    rcases Int.units_eq_one_or (Equiv.Perm.sign cert.σ) with h | h <;> simp [h]
+  refine mul_left_cancel₀ hs0 (mul_left_cancel₀ hl0 (Eq.trans ?_ hv.symm))
+  rw [← hu, ← (hU ▸ cert.isPivotedBy : U.IsPivotedBy cert.pivot).det_eq, ← hU, Matrix.det_mul,
+    Matrix.det_permute, ← hs, ← hl, ← Matrix.det_of_isLowerTriangular _ cert.L_lowerTriangular]
 
 end Echelon
