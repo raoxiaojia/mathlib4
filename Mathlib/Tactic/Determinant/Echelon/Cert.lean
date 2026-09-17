@@ -11,12 +11,9 @@ public import Mathlib.Tactic.Echelon.Bareiss
 public import Mathlib.Tactic.Echelon.Cert
 public import Mathlib.Tactic.Matrix.Parsing
 public import Mathlib.Tactic.NormNum.Basic
-public import Mathlib.Tactic.ReduceModChar
 public meta import Mathlib.Tactic.Echelon.Bareiss
 public meta import Mathlib.Tactic.Echelon.Cert
-public meta import Mathlib.Tactic.Matrix.Parsing
 public meta import Mathlib.Tactic.NormNum.Basic
-public meta import Mathlib.Tactic.ReduceModChar
 
 /-!
 # Determinants of matrix literals by echelon decomposition
@@ -169,10 +166,9 @@ fallback method. -/
 def normDetEchelon? (e : Expr) : SimpM (Option Simp.Result) := do
   let_expr Matrix.det _ _ _ _ _ A := e | return none
   let A ← instantiateMVars A
-  let some (m, n, R, entries) ← matchMatrixLit? A
+  let some (m, _, R, entries) ← matchMatrixLit? A
     | trace[Tactic.evalDet] "not a closed matrix literal{indentExpr A}"
       return none
-  unless m == n do return none
   match ← checkBareissApplicable R with
   | .error err =>
     trace[Tactic.evalDet] "{err}{indentExpr A}"
@@ -185,15 +181,12 @@ def normDetEchelon? (e : Expr) : SimpM (Option Simp.Result) := do
   have A : Q(Matrix (Fin $m) (Fin $m) $α) := A
   try
     let ⟨v, pf⟩ ← proveEchelonDet _cr _id m A entries
-    -- normalise the value where `norm_num` evaluates it, and reduce it modulo the
-    -- characteristic where the ring is `ZMod n`
+    -- normalise the value where `norm_num` evaluates it
     let ctx ← readThe Simp.Context
     let r : Simp.Result := { expr := v, proof? := some pf }
-    let r ← r.mkEqTrans (← try Mathlib.Meta.NormNum.deriveSimp ctx (useSimp := false) (e := v)
-      catch _ => pure { expr := v })
-    let r ← r.mkEqTrans (← try Tactic.ReduceModChar.derive (e := r.expr)
-      catch _ => pure { expr := r.expr })
-    return some r
+    let s ← try Mathlib.Meta.NormNum.deriveSimp ctx (useSimp := false) (e := v)
+      catch _ => pure { expr := v }
+    return some (← r.mkEqTrans s)
   catch ex =>
     trace[Tactic.evalDet] "{ex.toMessageData}"
     return none

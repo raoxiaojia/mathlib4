@@ -9,7 +9,6 @@ public import Mathlib.LinearAlgebra.Matrix.Determinant.Basic  -- shake: keep (Ma
 public import Mathlib.LinearAlgebra.Matrix.Determinant.Bird.Correctness  -- shake: keep (BirdDet.det_eq_birdDet, Qq dependency)
 public import Mathlib.Tactic.Determinant.Bird.Cert
 public import Mathlib.Tactic.Determinant.Echelon.Cert
-public meta import Mathlib.Tactic.Determinant.Echelon.Cert
 
 /-!
 # `norm_det` simproc and `eval_det` tactic
