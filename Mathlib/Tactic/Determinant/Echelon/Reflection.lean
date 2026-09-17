@@ -22,7 +22,7 @@ The diagonal product of a matrix given as a list of rows, with a bridge lemma to
 ## Main results
 
 - `prod_diag_ofLists`
-- `sign_swap_trans_of_sign_eq_one`, `sign_swap_trans_of_sign_eq_neg_one`
+- `intCast_sign_swap_trans`
 -/
 
 @[expose] public section
@@ -67,22 +67,12 @@ theorem prod_diag_ofLists [CommMonoidWithZero α] (m : ℕ) (rows : List (List �
 
 variable {n : Type*} [DecidableEq n] [Fintype n] {σ : Equiv.Perm n} {x y : n}
 
-theorem sign_swap_trans_of_sign_eq_one (h : Equiv.Perm.sign σ = 1) (hxy : x ≠ y) :
-    Equiv.Perm.sign ((Equiv.swap x y).trans σ) = -1 := by
-  rw [Equiv.Perm.sign_trans, h, Equiv.Perm.sign_swap hxy, one_mul]
-
-theorem sign_swap_trans_of_sign_eq_neg_one (h : Equiv.Perm.sign σ = -1) (hxy : x ≠ y) :
-    Equiv.Perm.sign ((Equiv.swap x y).trans σ) = 1 := by
-  rw [Equiv.Perm.sign_trans, h, Equiv.Perm.sign_swap hxy, neg_one_mul, neg_neg]
-
-theorem intCast_sign_eq_one [Ring α] (h : Equiv.Perm.sign σ = 1) :
-    ((Equiv.Perm.sign σ : ℤ) : α) = 1 := by
-  rw [h]
+theorem intCast_sign_refl [Ring α] : ((Equiv.Perm.sign (Equiv.refl n) : ℤ) : α) = 1 := by
   simp
 
-theorem intCast_sign_eq_neg_one [Ring α] (h : Equiv.Perm.sign σ = -1) :
-    ((Equiv.Perm.sign σ : ℤ) : α) = -1 := by
-  rw [h]
+theorem intCast_sign_swap_trans [Ring α] {s : α} (h : ((Equiv.Perm.sign σ : ℤ) : α) = s)
+    (hxy : x ≠ y) : ((Equiv.Perm.sign ((Equiv.swap x y).trans σ) : ℤ) : α) = -s := by
+  rw [Equiv.Perm.sign_trans, Equiv.Perm.sign_swap hxy, ← h]
   simp
 
 end Mathlib.Tactic.Determinant
