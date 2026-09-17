@@ -215,6 +215,18 @@ example : Matrix.det !![1, 2; 3, 4] = -2 := by
 example : Matrix.det (let A := !![1, 2; 3, 4]; A) = -2 := by
   eval_det
 
+-- a row swap: the sign of the last pivot flips
+example : Matrix.det !![0, 1; 1, 0] = (-1 : ℤ) := by
+  eval_det
+
+-- a pivot shortfall
+example : Matrix.det !![1, 2; 2, 4] = (0 : ℤ) := by
+  eval_det
+
+-- fractional entries: the value is the quotient of the diagonal products, in `norm_num`'s form
+example : Matrix.det !![1/2, 1/3; 1/5, 1/7] = (1/210 : ℚ) := by
+  eval_det
+
 example (a b c d : R) : Matrix.det !![a, b; c, d] = a * d - b * c := by
   eval_det
   ring
