@@ -14,15 +14,6 @@ public import Mathlib.Tactic.Matrix.OfLists
 
 The diagonal product of a matrix given as a list of rows, with a bridge lemma to the product over
 `Fin m` of an `ofLists` matrix, and the sign of a permutation given as a chain of swaps.
-
-## Main definitions
-
-- `diagProd`
-
-## Main results
-
-- `prod_diag_ofLists`
-- `intCast_sign_swap_trans`
 -/
 
 @[expose] public section

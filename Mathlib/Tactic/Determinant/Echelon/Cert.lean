@@ -24,11 +24,6 @@ through the certificate `Echelon.Decomposition A` of its Bareiss decomposition a
 the echelon form `U`, and the reading is certified by the identity `l * (s * v) = u` on the
 diagonal products.
 
-## Main definitions
-
-- `proveEchelonDet`: produce the decomposition and elaborate a proof of `A.det = v`.
-- `normDetEchelon?`: the `norm_det` branch for literals the echelon method handles.
-
 ## Implementation notes
 
 The Bareiss elimination leaves the diagonal of `L` equal to the diagonal of `U` shifted by one
