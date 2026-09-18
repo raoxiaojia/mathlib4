@@ -35,23 +35,32 @@ variable {α : Type*}
 
 /-! ### Diagonal products -/
 
+section
+
+variable [Zero α] [One α] [Mul α]
+
 /-- The product of the `c` entries at columns `k, k + 1, …` of successive rows, a missing row
 contributing `0`. -/
-def diagProd [Zero α] [One α] [Mul α] (k : ℕ) : ℕ → List (List α) → α
+def diagProd (k : ℕ) : ℕ → List (List α) → α
   | 0, _ => 1
   | _ + 1, [] => 0
   | c + 1, row :: rows => row.getD k 0 * diagProd (k + 1) c rows
 
-theorem diagProd_zero [Zero α] [One α] [Mul α] (k : ℕ) (rows : List (List α)) :
-    diagProd k 0 rows = 1 :=
+theorem diagProd_zero (k : ℕ) (rows : List (List α)) : diagProd k 0 rows = 1 :=
   rfl
 
-theorem diagProd_succ_cons [Zero α] [One α] [Mul α] {k c : ℕ} {row : List α}
-    {rows : List (List α)} {a e : α} (hd : row.getD k 0 = a) (h : diagProd (k + 1) c rows = e) :
+theorem diagProd_succ_cons {k c : ℕ} {row : List α} {rows : List (List α)} {a e : α}
+    (hd : row.getD k 0 = a) (h : diagProd (k + 1) c rows = e) :
     diagProd k (c + 1) (row :: rows) = a * e := by
   rw [diagProd, hd, h]
 
-theorem prod_getD_eq_diagProd [CommMonoidWithZero α] (k c : ℕ) (rows : List (List α)) :
+end
+
+section CommMonoidWithZero
+
+variable [CommMonoidWithZero α]
+
+theorem prod_getD_eq_diagProd (k c : ℕ) (rows : List (List α)) :
     ∏ i : Fin c, (rows.getD i []).getD (k + i) 0 = diagProd k c rows := by
   induction c generalizing k rows with
   | zero => simp [diagProd]
@@ -59,9 +68,11 @@ theorem prod_getD_eq_diagProd [CommMonoidWithZero α] (k c : ℕ) (rows : List (
     cases rows <;>
       simp [diagProd, Fin.prod_univ_succ, ← ih, Nat.add_right_comm _ _ 1, ← Nat.add_assoc]
 
-theorem prod_diag_ofLists [CommMonoidWithZero α] (m : ℕ) (rows : List (List α)) :
+theorem prod_diag_ofLists (m : ℕ) (rows : List (List α)) :
     ∏ i, ofLists m m rows i i = diagProd 0 m rows := by
   simpa using prod_getD_eq_diagProd 0 m rows
+
+end CommMonoidWithZero
 
 /-! ### Signs of chains of swaps -/
 
