@@ -67,28 +67,28 @@ def mkRatNumeral {u : Level} (α : Q(Type u)) (v : ℚ) : MetaM Q($α) := do
   let _ ← synthInstanceQ q(Div $α)
   return q($n / $d)
 
-/-- Prove the sign in the ring, `-(-(… 1))`, of a permutation of the shape `mkPerm` builds,
-`(swap a b).trans (… (refl _))`, one lemma per swap. -/
-partial def provePermSign {u : Level} {α : Q(Type u)} (_cr : Q(CommRing $α)) {m : ℕ}
-    (σ : Q(Equiv.Perm (Fin $m))) :
-    MetaM ((s : Q($α)) × Q(((Equiv.Perm.sign $σ : ℤ) : $α) = $s)) := do
-  match_expr σ with
-  | Equiv.refl _ =>
+/-- Prove the sign in the ring, `-(-(… 1))`, of a permutation of the shape `mkPerm` builds from
+`k` swaps, `(swap a b).trans (… (refl _))`, one lemma per swap. -/
+def provePermSign {u : Level} {α : Q(Type u)} (_cr : Q(CommRing $α)) {m : ℕ} :
+    (k : ℕ) → (σ : Q(Equiv.Perm (Fin $m))) →
+      MetaM ((s : Q($α)) × Q(((Equiv.Perm.sign $σ : ℤ) : $α) = $s))
+  | 0, σ => do
+    let_expr Equiv.refl _ := σ | throwError "expected the identity permutation in{indentExpr σ}"
     -- `σ` is the matched term, so the lemmas are stated about it by an unchecked retyping
     let h : Expr := q(intCast_sign_refl (n := Fin $m) (α := $α))
     have h : Q(((Equiv.Perm.sign $σ : ℤ) : $α) = 1) := h
     return ⟨q(1), h⟩
-  | Equiv.trans _ _ _ sw rest =>
+  | k + 1, σ => do
+    let_expr Equiv.trans _ _ _ sw rest := σ | throwError "expected a swap in{indentExpr σ}"
     let_expr Equiv.swap _ _ a b := sw | throwError "expected a swap in{indentExpr σ}"
     have a : Q(Fin $m) := a
     have b : Q(Fin $m) := b
     have rest : Q(Equiv.Perm (Fin $m)) := rest
-    let ⟨s, h⟩ ← provePermSign _cr rest
+    let ⟨s, h⟩ ← provePermSign _cr k rest
     let hab : Q($a ≠ $b) ← mkDecideProofQ q($a ≠ $b)
     let h' : Expr := q(intCast_sign_swap_trans $h $hab)
     have h' : Q(((Equiv.Perm.sign $σ : ℤ) : $α) = -$s) := h'
     return ⟨q(-$s), h'⟩
-  | _ => throwError "expected a chain of swaps in{indentExpr σ}"
 
 /-- Candidate values of the determinant, read off the decomposition data: `0` on a pivot
 shortfall; the last pivot with the sign of the swaps when the diagonal of `L` is the shifted
@@ -139,7 +139,7 @@ def proveEchelonDet {u : Level} {α : Q(Type u)} (_cr : Q(CommRing $α)) (_id : 
   have hl : Q(∏ i, ofLists $m $m $litL i i = diagProd 0 $m $litL) := q(prod_diag_ofLists $m $litL)
   have hu : Q(∏ i, ofLists $m $m $litU i i = diagProd 0 $m $litU) := q(prod_diag_ofLists $m $litU)
   -- the sign of the certificate's permutation
-  let ⟨s, hs⟩ ← provePermSign _cr c.σ
+  let ⟨s, hs⟩ ← provePermSign _cr r.data.swaps.size c.σ
   -- the identity `l * (s * v) = u` is decided, the kernel evaluating the products, or proved by
   -- the entry certifier on the products unfolded to the entries
   let certifyIdentity : (v : Q($α)) → MetaM Q($l * ($s * $v) = $uu) ← match certifier? with
