@@ -56,8 +56,11 @@ theorem prod_getD_eq_diagProd (k c : ℕ) (rows : List (List α)) :
   induction c generalizing k rows with
   | zero => simp [diagProd]
   | succ c ih =>
-    cases rows <;>
-      simp [diagProd, Fin.prod_univ_succ, ← ih, Nat.add_right_comm _ _ 1, ← Nat.add_assoc]
+    cases rows with
+    | nil => simp [diagProd]
+    | cons row rows =>
+      rw [diagProd_succ_cons rfl (ih (k + 1) rows).symm, Fin.prod_univ_succ]
+      grind
 
 theorem prod_diag_ofLists (m : ℕ) (rows : List (List α)) :
     ∏ i, ofLists m m rows i i = diagProd 0 m rows := by
@@ -74,7 +77,6 @@ theorem intCast_sign_refl [Ring α] : ((Equiv.Perm.sign (Equiv.refl n) : ℤ) : 
 
 theorem intCast_sign_swap_trans [Ring α] {s : α} (h : ((Equiv.Perm.sign σ : ℤ) : α) = s)
     (hxy : x ≠ y) : ((Equiv.Perm.sign ((Equiv.swap x y).trans σ) : ℤ) : α) = -s := by
-  rw [Equiv.Perm.sign_trans, Equiv.Perm.sign_swap hxy, ← h]
-  simp
+  simp [Equiv.Perm.sign_trans, Equiv.Perm.sign_swap hxy, ← h]
 
 end Mathlib.Tactic.Determinant
