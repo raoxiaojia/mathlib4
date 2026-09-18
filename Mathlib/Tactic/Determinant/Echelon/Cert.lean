@@ -19,17 +19,15 @@ public meta import Mathlib.Tactic.NormNum.Basic
 # Determinants of matrix literals by echelon decomposition
 
 `proveEchelonDet` evaluates the determinant of a square matrix literal with non-symbolic entries
-through the certificate `Echelon.Decomposition A` of its Bareiss decomposition and
-`Echelon.Decomposition.det_eq`: the determinant is read off the diagonals of the transform `L` and
-the echelon form `U`, and the reading is certified by the identity `l * (s * v) = u` on the
-diagonal products.
+through the certificate `Echelon.Decomposition A` of its echelon decomposition.
 
 ## Implementation notes
 
-The Bareiss elimination leaves the diagonal of `L` equal to the diagonal of `U` shifted by one
-row, so the quotient of the diagonal products is the last pivot. The rational model rescales the
-rows of its input and folds the scales into `L`, which breaks this shape; its ring then has a
-division, and the quotient is evaluated by `norm_num` instead.
+The determinant is the quotient of the diagonal products of `U` and `L`, up to the sign of the
+row permutation. When the entries are integer numerals the quotient is computed on their values;
+it is exact, the rational model's row scales dividing out. The `ℤ√d` model emits structured
+literals and does not rescale, so its transform `L` keeps the diagonal of `U` shifted by one row
+and the quotient is the last pivot itself.
 -/
 
 public meta section
@@ -85,33 +83,23 @@ def provePermSign {u : Level} {α : Q(Type u)} (_cr : Q(CommRing $α)) {m : ℕ}
     have h' : Q(((Equiv.Perm.sign $σ : ℤ) : $α) = -$s) := h'
     return ⟨q(-$s), h'⟩
 
-/-- Candidate values of the determinant, read off the decomposition data: `0` on a pivot
-shortfall; the last pivot with the sign of the swaps when the diagonal of `L` is the shifted
-diagonal of `U`; and the quotient `s * u / l` of the values of the diagonal numerals, evaluated
-by `norm_num`, when the ring has a division. -/
-def detCandidates {u : Level} {α : Q(Type u)} (_cr : Q(CommRing $α)) (m : ℕ)
-    (data : BareissData Expr) : MetaM (List Q($α)) := do
-  if m == 0 then return [q(1)]
-  if data.pivot.size < m then return [q(0)]
-  let mut candidates : Array Q($α) := #[]
+/-- The value of the determinant read off the decomposition data: `1` for the empty matrix, `0` on
+a pivot shortfall, the quotient `s * u / l` of the diagonal products when the entries of `L` and
+`U` are integer numerals, and the last pivot with the sign `s` of the swaps otherwise. -/
+def detValue {u : Level} {α : Q(Type u)} (_cr : Q(CommRing $α)) (m : ℕ)
+    (data : BareissData Expr) : MetaM Q($α) := do
+  if m == 0 then return q(1)
+  if data.pivot.size < m then return q(0)
   have zero : Q($α) := q(0)
   let diag (M : Array (Array Expr)) (k : ℕ) : Q($α) := (M.getD k #[]).getD k zero
   let positive := data.swaps.size % 2 == 0
-  -- both diagonals are emitted by the model's one `mkEntry`, so equal values are equal terms
-  if (List.range (m - 1)).all fun k => diag data.L (k + 1) == diag data.U k then
+  let product (M : Array (Array Expr)) : Option ℤ :=
+    (List.range m).foldlM (fun acc k => (acc * ·) <$> (diag M k).int?) 1
+  match product data.L, product data.U with
+  | some l, some u => mkRatNumeral α ((if positive then 1 else -1) * u / l)
+  | _, _ =>
     have p : Q($α) := diag data.U (m - 1)
-    let v : Q($α) := if positive then p else q(-$p)
-    candidates := candidates.push v
-  if let .some _ ← trySynthInstanceQ q(Div $α) then
-    let product (M : Array (Array Expr)) : MetaM (Option ℚ) :=
-      (List.range m).foldlM (init := some 1) fun acc? k => do
-        let some acc := acc? | return none
-        try return (← Mathlib.Meta.NormNum.derive (diag M k)).toRat.map (acc * ·)
-        catch _ => return none
-    if let (some l, some u) := (← product data.L, ← product data.U) then
-      if l ≠ 0 then
-        candidates := candidates.push (← mkRatNumeral α ((if positive then 1 else -1) * u / l))
-  return candidates.toList
+    return if positive then p else q(-$p)
 
 /-- Produce the Bareiss decomposition of the square matrix literal `A` with `entries`, its parsed
 entries, and elaborate a proof of `A.det = v` for the value `v` read off the decomposition. -/
@@ -148,17 +136,8 @@ def proveEchelonDet {u : Level} {α : Q(Type u)} (_cr : Q(CommRing $α)) (_id : 
         let hv : Q($eL * ($s * $v) = $eU) ← certifier q($eL * ($s * $v) = $eU)
         return q((congrArg (· * ($s * $v)) $hL).trans (Eq.trans $hv (Eq.symm $hU)))
   -- the value, verified by the identity
-  let candidates ← detCandidates _cr m r.data
-  let mut result : Option ((v : Q($α)) × Q($l * ($s * $v) = $uu)) := none
-  for v in candidates do
-    try
-      let hv ← certifyIdentity v
-      result := some ⟨v, hv⟩
-      break
-    catch ex =>
-      trace[Tactic.evalDet] "the candidate value {v} is refuted: {ex.toMessageData}"
-  let some ⟨v, hv⟩ := result
-    | throwError "no candidate value of the determinant is certified"
+  let v ← detValue _cr m r.data
+  let hv ← certifyIdentity v
   -- the projections of `cert` reduce to the fields of `c`, and `c.L`, `c.U` are the terms the
   -- views rebuilt, so the hypotheses transport by defeq
   have Um : Q(Matrix (Fin $m) (Fin $m) $α) := c.U
