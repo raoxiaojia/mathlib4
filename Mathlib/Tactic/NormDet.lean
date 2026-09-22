@@ -8,12 +8,16 @@ module
 public import Mathlib.LinearAlgebra.Matrix.Determinant.Basic  -- shake: keep (Matrix.det, Qq dependency)
 public import Mathlib.LinearAlgebra.Matrix.Determinant.Bird.Correctness  -- shake: keep (BirdDet.det_eq_birdDet, Qq dependency)
 public import Mathlib.Tactic.Determinant.Bird.Cert
+public import Mathlib.Tactic.Determinant.Echelon.Cert
 
 /-!
 # `norm_det` simproc and `eval_det` tactic
 
 This module defines the `norm_det` simproc and the `eval_det` tactic for
 normalizing determinants of matrix literals over a commutative ring.
+
+A literal with non-symbolic entries over a commutative domain is evaluated through its echelon
+decomposition; any other literal is evaluated by Bird's division-free algorithm.
 -/
 
 public meta section
@@ -69,6 +73,7 @@ simproc_decl norm_det (Matrix.det _) := fun e => do
   let e ← instantiateMVars e
   let ⟨_, _, e⟩ ← inferTypeQ' e
   let ~q(@Matrix.det (Fin $n) _ _ _ $rα $matrix) := e | return .continue
+  if let some r ← normDetEchelon? e then return .done r
   let some entries ← entriesOfMatrixLiteral? matrix | return .continue
   return .done (← normalizeDetFromEntries rα matrix entries)
 
