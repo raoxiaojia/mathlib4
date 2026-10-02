@@ -296,21 +296,20 @@ lemma BlockTriangular.not_isIndecomposable [Finite m] [Zero R] (hM : M.BlockTria
 
 open Relation in
 lemma isIndecomposable_iff_reflTransGen [Finite m] [Zero R] (M : Matrix m m R) :
-    M.IsIndecomposable ↔ ∀ i j, ReflTransGen (fun i j ↦ M i j ≠ 0) i j := by
+    M.IsIndecomposable ↔ ∀ i j, ReflTransGen (M · · ≠ 0) i j := by
   classical
   rw [isIndecomposable_iff_blockTriangular_const (α := Bool)]
   refine ⟨fun h i j ↦ ?_, fun h b hb ↦ ?_⟩
-  · obtain ⟨a, ha⟩ := h (fun k ↦ decide (ReflTransGen (fun i j ↦ M i j ≠ 0) i k)) fun x y hxy ↦ by
+  · obtain ⟨a, ha⟩ := h (fun k ↦ decide (ReflTransGen (M · · ≠ 0) i k)) fun x y hxy ↦ by
       grind [Bool.lt_iff]
     have hi := congr_fun ha i
     have hj := congr_fun ha j
     grind
-  · have key {x y : m} (hxy : ReflTransGen (fun i j ↦ M i j ≠ 0) x y) : b x ≤ b y := by
-      simpa [reflTransGen_eq_self] using
-        hxy.lift (p := (· ≤ ·)) b fun x y hxy ↦ not_lt.1 fun hlt ↦ hxy (hb hlt)
+  · have key (x y : m) : b x ≤ b y := by
+      induction h x y with grind [BlockTriangular]
     rcases isEmpty_or_nonempty m with hm | ⟨⟨x⟩⟩
     · exact ⟨false, funext hm.elim⟩
-    · exact ⟨b x, funext fun y ↦ le_antisymm (key (h y x)) (key (h x y))⟩
+    · exact ⟨b x, funext fun y ↦ le_antisymm (key y x) (key x y)⟩
 
 end LinearOrder
 

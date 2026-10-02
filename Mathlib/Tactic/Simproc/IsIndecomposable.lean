@@ -5,6 +5,7 @@ Authors: Rao Xiaojia
 -/
 module
 
+public import Batteries.Data.Nat.Basic
 public import Mathlib.LinearAlgebra.Matrix.Block
 public import Mathlib.Tactic.Matrix.Parsing
 import Mathlib.Util.Qq
@@ -41,7 +42,8 @@ variable {R : Type*}
 
 /-- Whether the edges `es`, taken in order, each leave a vertex already reached, the reached
 vertices being the set bits of `seen`, and reach every vertex. -/
-def reachesAll {n : ℕ} (adj : Fin n → Fin n → Bool) (seen : ℕ) : List (Fin n × Fin n) → Bool
+def reachesAll {n : ℕ} (adj : Fin n → Fin n → Bool) (seen : ℕ) (es : List (Fin n × Fin n)) : Bool :=
+  match es with
   | [] => seen == 2 ^ n - 1
   | (p, c) :: es => seen.testBit p && adj p c && reachesAll adj (seen ||| 1 <<< (c : ℕ)) es
 
@@ -49,24 +51,17 @@ theorem reflTransGen_of_reachesAll {n : ℕ} {adj : Fin n → Fin n → Bool} {a
     {es : List (Fin n × Fin n)} (h : reachesAll adj seen es = true)
     (hseen : ∀ v : Fin n, seen.testBit v → ReflTransGen (adj · ·) a v) (v : Fin n) :
     ReflTransGen (adj · ·) a v := by
-  induction es generalizing seen with
-  | nil => simp_all [reachesAll]
-  | cons e es ih =>
-    obtain ⟨p, c⟩ := e
-    simp only [reachesAll, Bool.and_eq_true] at h
-    refine ih h.2 fun w hw ↦ ?_
-    grind [Fin.ext_iff]
+  induction es generalizing seen with grind [reachesAll, Fin.ext_iff]
 
 theorem isIndecomposable_of_reachesAll {n : ℕ} [Zero R] [DecidableEq R]
-    {M : Matrix (Fin n) (Fin n) R} (a : Fin n) (fwd bwd : List (Fin n × Fin n))
+    {M : Matrix (Fin n) (Fin n) R} {a : Fin n} {fwd bwd : List (Fin n × Fin n)}
     (hf : reachesAll (fun i j ↦ decide (M i j ≠ 0)) (1 <<< (a : ℕ)) fwd = true)
     (hb : reachesAll (fun i j ↦ decide (M j i ≠ 0)) (1 <<< (a : ℕ)) bwd = true) :
     M.IsIndecomposable := by
   have hseen {adj : Fin n → Fin n → Bool} (v : Fin n) (hv : (1 <<< (a : ℕ)).testBit v) :
       ReflTransGen (adj · ·) a v := by
     grind
-  rw [isIndecomposable_iff_reflTransGen]
-  intro i j
+  refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
   have hi := reflTransGen_of_reachesAll hb hseen i
   have hj := reflTransGen_of_reachesAll hf hseen j
   simp only [decide_eq_true_eq] at hi hj
@@ -78,19 +73,14 @@ def rowsClosed {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) : Bool :=
     (List.finRange n).all fun j ↦ s.testBit j || !adj i j
 
 theorem blockTriangular_of_rowsClosed {n : ℕ} [Zero R] [DecidableEq R]
-    {M : Matrix (Fin n) (Fin n) R} {s : ℕ} (h : rowsClosed (fun i j ↦ decide (M i j ≠ 0)) s) :
-    M.BlockTriangular fun k ↦ s.testBit k := by
-  intro i j hij
-  rw [Bool.lt_iff] at hij
-  simp only [rowsClosed, List.all_eq_true, List.mem_finRange, forall_const] at h
-  grind
-
-/-- The nonzero entries of row `i` of `M`, as the set bits of a natural number. -/
-def rowMask {n : ℕ} [Zero R] [DecidableEq R] (M : Matrix (Fin n) (Fin n) R) (i : Fin n) : ℕ :=
-  (List.finRange n).foldr (init := 0) fun j acc ↦ if M i j = 0 then acc else acc ||| 1 <<< (j : ℕ)
+    {M : Matrix (Fin n) (Fin n) R} {s : ℕ}
+    (h : rowsClosed (fun i j ↦ decide (M i j ≠ 0)) s = true) :
+    M.BlockTriangular (s.testBit ·) := by
+  grind [rowsClosed, BlockTriangular, Bool.lt_iff]
 
 /-- The nonzero entries of `l`, as the set bits of a natural number. -/
-def listMask [Zero R] [DecidableEq R] : List R → ℕ
+def listMask [Zero R] [DecidableEq R] (l : List R) : ℕ :=
+  match l with
   | [] => 0
   | a :: l => (if a = 0 then 0 else 1) ||| listMask l <<< 1
 
@@ -106,17 +96,18 @@ initialize registerTraceClass `Tactic.reduceIsIndecomposable
 
 namespace Mathlib.Tactic.Matrix
 
-/-- Breadth-first search from `r` along `adj`, returning the tree edges in discovery order and the
-reached vertices. -/
-def spanningTree (adj : Array (Array Bool)) (r : Nat) : Array (Nat × Nat) × Array Bool := Id.run do
-  let mut seen := (Array.replicate adj.size false).set! r true
+/-- Breadth-first search from `root` along `adj`, returning the tree edges in discovery order and
+the reached vertices. -/
+def spanningTree (n : Nat) (adj : Nat → Nat → Bool) (root : Nat) :
+    Array (Nat × Nat) × Array Bool := Id.run do
+  let mut seen := (Array.replicate n false).set! root true
   let mut edges := #[]
-  let mut frontier := #[r]
+  let mut frontier := #[root]
   while !frontier.isEmpty do
     let mut next := #[]
     for p in frontier do
-      for c in 0...adj.size do
-        if (adj[p]!)[c]! && !seen[c]! then
+      for c in 0...n do
+        if adj p c && !seen[c]! then
           seen := seen.set! c true
           edges := edges.push (p, c)
           next := next.push c
@@ -124,7 +115,7 @@ def spanningTree (adj : Array (Array Bool)) (r : Nat) : Array (Nat × Nat) × Ar
   return (edges, seen)
 
 /-- The list literal of the edges `edges`. -/
-def mkEdgeList (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n × Fin $n)) := do
+def mkEdgeListLitQ (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n × Fin $n)) := do
   let es ← edges.toList.mapM fun (p, c) ↦ do
     let pQ : Q(Fin $n) ← mkNumeral q(Fin $n) p
     let cQ : Q(Fin $n) ← mkNumeral q(Fin $n) c
@@ -133,38 +124,32 @@ def mkEdgeList (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n × 
 
 /-- The nonzero pattern from the row masks `masks`, each evaluated by the kernel, or `none` when a
 mask does not reduce to a literal. -/
-def evalPattern (n : Nat) (masks : Array Q(Nat)) : MetaM (Option (Array (Array Bool))) := do
+def evalPattern? (masks : Array Q(Nat)) : MetaM (Option (Array Nat)) := do
   let env ← getEnv
-  let lctx ← getLCtx
   return masks.mapM fun mask ↦
-    match Kernel.whnf env lctx mask with
-    | .ok (.lit (.natVal m)) => some (Array.ofFn (n := n) fun j ↦ m.testBit j)
+    match Kernel.whnf env {} mask with
+    | .ok (.lit (.natVal m)) => some m
     | _ => none
 
-/-- The row masks of `M`, by `listMask` on each row of a literal and by `rowMask` otherwise. -/
-def rowMasks {u : Level} {R : Q(Type u)} (zR : Q(Zero $R)) (dR : Q(DecidableEq $R)) (n : Nat)
-    (M : Q(Matrix (Fin $n) (Fin $n) $R)) : MetaM (Array Q(Nat)) := do
+/-- The row masks of `M`, by `listMask` on each row of a literal and by `Nat.ofBits` otherwise. -/
+def mkRowMasks {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α)) (n : Nat)
+    (M : Q(Matrix (Fin $n) (Fin $n) $α)) : MetaM (Array Q(Nat)) := do
   match ← matchMatrixLit? M with
   | some (_, _, _, entries) =>
     return entries.map fun row ↦
-      have rowQ : List Q($R) := row.toList
+      let rowQ : List Q($α) := row.toList
       q(listMask $(mkListLitQ rowQ))
   | none =>
     Array.ofFnM (n := n) fun i ↦ do
       let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
-      return q(rowMask $M $iQ)
+      return q(Nat.ofBits fun j ↦ decide ($M $iQ j ≠ 0))
 
 /-- Prove `¬M.IsIndecomposable` from the set `s` of rows whose entries outside `s` vanish, with
 `i` in `s` and `j` outside it. -/
-def refuteIndecomposable {u : Level} {R : Q(Type u)} (zR : Q(Zero $R)) (dR : Q(DecidableEq $R))
-    (n : Nat) (M : Q(Matrix (Fin $n) (Fin $n) $R)) (s : Array Bool) (i j : Nat) :
-    MetaM Q(¬($M).IsIndecomposable) := do
-  let mask := Id.run do
-    let mut mask := 0
-    for k in 0...n do
-      if s[k]! then mask := mask ||| 1 <<< k
-    return mask
-  have maskQ : Q(Nat) := mkNatLitQ mask
+def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
+    (dα : Q(DecidableEq $α)) (n : Nat) (M : Q(Matrix (Fin $n) (Fin $n) $α)) (s : Array Bool)
+    (i j : Nat) : MetaM Q(¬($M).IsIndecomposable) := do
+  let maskQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (s[·]!))
   let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
   let jQ : Q(Fin $n) ← mkNumeral q(Fin $n) j
   let hc ← mkDecideProofQ q(rowsClosed (fun i j ↦ decide ($M i j ≠ 0)) $maskQ = true)
@@ -172,59 +157,48 @@ def refuteIndecomposable {u : Level} {R : Q(Type u)} (zR : Q(Zero $R)) (dR : Q(D
   return q((blockTriangular_of_rowsClosed $hc).not_isIndecomposable $hij)
 
 /-- Rewrite `M.IsIndecomposable` to `True` or `False` from the nonzero pattern `adj` of `M`. -/
-def proveIndecomposable {u : Level} {R : Q(Type u)} (zR : Q(Zero $R)) (dR : Q(DecidableEq $R))
-    (n : Nat) (M : Q(Matrix (Fin $n) (Fin $n) $R)) (adj : Array (Array Bool)) :
-    MetaM Simp.Result := do
-  let (fwd, fwdSeen) := spanningTree adj 0
-  -- the vertices reached from `0` are closed under the edges
+def proveIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
+    (n : Nat) (M : Q(Matrix (Fin $n) (Fin $n) $α)) (adj : Array Nat) : MetaM Simp.Result := do
+  let (fwd, fwdSeen) := spanningTree n (fun p c ↦ adj[p]!.testBit c) 0
+  -- The vertices reached from `0` are closed under the edges.
   if let some j := fwdSeen.findIdx? (!·) then
-    return { expr := q(False),
-             proof? := q(eq_false $(← refuteIndecomposable zR dR n M fwdSeen 0 j)) }
-  let adjT := Array.ofFn (n := n) fun i ↦ Array.ofFn (n := n) fun j ↦ (adj[j]!)[i]!
-  let (bwd, bwdSeen) := spanningTree adjT 0
-  -- the vertices not reaching `0` are closed under the edges
+    let pf ← certifyNotIsIndecomposable zα dα n M fwdSeen 0 j
+    return { expr := q(False), proof? := q(eq_false $pf) }
+  let (bwd, bwdSeen) := spanningTree n (fun p c ↦ adj[c]!.testBit p) 0
+  -- The vertices not reaching `0` are closed under the edges.
   if let some i := bwdSeen.findIdx? (!·) then
-    return { expr := q(False),
-             proof? := q(eq_false $(← refuteIndecomposable zR dR n M (bwdSeen.map (!·)) i 0)) }
+    let pf ← certifyNotIsIndecomposable zα dα n M (bwdSeen.map (!·)) i 0
+    return { expr := q(False), proof? := q(eq_false $pf) }
   let root : Q(Fin $n) ← mkNumeral q(Fin $n) 0
-  let fwdQ ← mkEdgeList n fwd
-  let bwdQ ← mkEdgeList n bwd
+  let fwdQ ← mkEdgeListLitQ n fwd
+  let bwdQ ← mkEdgeListLitQ n bwd
   let hf ← mkDecideProofQ
     q(reachesAll (fun i j ↦ decide ($M i j ≠ 0)) (1 <<< ($root : Nat)) $fwdQ = true)
   let hb ← mkDecideProofQ
     q(reachesAll (fun i j ↦ decide ($M j i ≠ 0)) (1 <<< ($root : Nat)) $bwdQ = true)
-  return { expr := q(True),
-           proof? := q(eq_true (isIndecomposable_of_reachesAll $root $fwdQ $bwdQ $hf $hb)) }
+  return { expr := q(True), proof? := q(eq_true (isIndecomposable_of_reachesAll $hf $hb)) }
 
 /-- Core of the `Matrix.reduceIsIndecomposable` simproc. -/
 def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
-  let_expr Matrix.IsIndecomposable ι R zR M := e | return .continue
-  let_expr Fin nE := ι
-    | trace[Tactic.reduceIsIndecomposable] "the index type is not `Fin n`{indentExpr ι}"
-      return .continue
-  let some n ← getNatValue? nE
-    | trace[Tactic.reduceIsIndecomposable] "the dimension is not a numeral{indentExpr nE}"
-      return .continue
-  let M ← instantiateMVars M
-  if M.hasFVar || M.hasMVar then
-    trace[Tactic.reduceIsIndecomposable] "the matrix is not closed{indentExpr M}"
-    return .continue
-  let v ← getDecLevel R
-  have R : Q(Type v) := R
-  have zR : Q(Zero $R) := zR
+  let e ← instantiateMVars e
+  let_expr Matrix.IsIndecomposable finN R zR M := e | return .continue
+  if e.hasFVar || e.hasMVar then return .continue
+  let_expr Fin nE := finN | return .continue
+  let some n ← getNatValue? nE | return .continue
+  let u ← getDecLevel R
+  have α : Q(Type u) := R
+  have zα : Q(Zero $α) := zR
   if n == 0 then
-    have M : Q(Matrix (Fin 0) (Fin 0) $R) := M
-    return .done { expr := q(True),
-                   proof? := q(eq_true ((isIndecomposable_iff_reflTransGen $M).2 (·.elim0))) }
-  have M : Q(Matrix (Fin $n) (Fin $n) $R) := M
-  let .some dR ← trySynthInstanceQ q(DecidableEq $R)
-    | trace[Tactic.reduceIsIndecomposable] "no `DecidableEq` instance for the entries{indentExpr R}"
-      return .continue
-  let some adj ← evalPattern n (← rowMasks zR dR n M)
+    have M : Q(Matrix (Fin 0) (Fin 0) $α) := M
+    let pf : Q(($M).IsIndecomposable) := q((isIndecomposable_iff_reflTransGen $M).2 (·.elim0))
+    return .done { expr := q(True), proof? := q(eq_true $pf) }
+  have M : Q(Matrix (Fin $n) (Fin $n) $α) := M
+  let .some dα ← trySynthInstanceQ q(DecidableEq $α) | return .continue
+  let some adj ← evalPattern? (← mkRowMasks zα dα n M)
     | trace[Tactic.reduceIsIndecomposable]
         "the kernel cannot decide which entries are zero{indentExpr M}"
       return .continue
-  return .done (← proveIndecomposable zR dR n M adj)
+  return .done (← proveIsIndecomposable zα dα n M adj)
 
 end Mathlib.Tactic.Matrix
 
