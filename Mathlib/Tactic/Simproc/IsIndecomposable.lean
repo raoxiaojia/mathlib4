@@ -7,7 +7,9 @@ module
 
 public import Batteries.Data.Nat.Basic
 public import Mathlib.LinearAlgebra.Matrix.Block
-public import Mathlib.Tactic.Matrix.Parsing
+public import Mathlib.Tactic.Matrix.OfLists
+public import Mathlib.Tactic.Matrix.View
+
 import Mathlib.Util.Qq
 
 /-!
@@ -22,11 +24,15 @@ The simproc searches the nonzero pattern of `M` from vertex `0`, forwards and ba
 indecomposable matrix is certified by the two search trees, which show that every vertex is
 reached from `0` and reaches `0`. A decomposable matrix is certified by a set of rows whose entries
 outside the set vanish, a block-triangular colouring of `M`. The kernel checks either certificate
-by evaluation and reads only the entries it names.
+by evaluation.
 
 The nonzero pattern is computed by the kernel too, one bitmask per row, so it agrees with the
-equality the certificates are checked against. The rows of a `!![…]` literal are passed as lists
-and read in one pass, since reading the literal by position costs the kernel a walk per entry.
+equality the certificates are checked against.
+
+The rows of a `!![…]` literal are passed as lists to the bitmasks and to the decomposability
+certificate, and read in one pass, since reading the literal by position costs the kernel a walk
+per entry. The search trees name only `2 * (n - 1)` entries, which are read by position. Any other
+matrix is read entry by entry.
 
 Reached vertices are tracked as the set bits of a natural number, whose bit operations the kernel
 evaluates on literals.
@@ -84,6 +90,40 @@ def listMask [Zero R] [DecidableEq R] (l : List R) : ℕ :=
   | [] => 0
   | a :: l => (if a = 0 then 0 else 1) ||| listMask l <<< 1
 
+theorem testBit_listMask [Zero R] [DecidableEq R] (l : List R) (j : ℕ) :
+    (listMask l).testBit j = decide (l.getD j 0 ≠ 0) := by
+  induction l generalizing j with
+  | nil => simp [listMask]
+  | cons a l ih =>
+    cases j <;> by_cases a = 0 <;> simp_all [listMask, Nat.testBit_one_eq_true_iff_self_eq_zero]
+
+/-- Whether every row of `rows` in the set given by the set bits of `s` vanishes outside that set,
+the rows being numbered from `i`. Each row is read once, through its `listMask`. -/
+def rowsClosedLists [Zero R] [DecidableEq R] (s i : ℕ) (rows : List (List R)) : Bool :=
+  match rows with
+  | [] => true
+  | row :: rows =>
+    (!s.testBit i || (listMask row &&& s) == listMask row) && rowsClosedLists s (i + 1) rows
+
+theorem blockTriangular_of_rowsClosedLists {n : ℕ} [Zero R] [DecidableEq R]
+    {M : Matrix (Fin n) (Fin n) R} {rows : List (List R)} {s : ℕ} (hM : M = ofLists n n rows)
+    (h : rowsClosedLists s 0 rows = true) : M.BlockTriangular (s.testBit ·) := by
+  have key {i₀ : ℕ} {rows : List (List R)} (h : rowsClosedLists s i₀ rows = true) {k j : ℕ}
+      (hk : s.testBit (i₀ + k)) (hj : s.testBit j = false) : (rows.getD k []).getD j 0 = 0 := by
+    induction rows generalizing i₀ k with
+    | nil => simp
+    | cons row rows ih =>
+      simp only [rowsClosedLists, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq] at h
+      cases k with
+      | zero =>
+        have := congrArg (Nat.testBit · j) (h.1.resolve_left (by simpa using hk))
+        simp_all [testBit_listMask]
+      | succ k => exact ih h.2 (by grind)
+  subst hM
+  intro i j hij
+  rw [Bool.lt_iff] at hij
+  simpa using key h (by simpa using hij.2) hij.1
+
 end Mathlib.Tactic.Matrix
 
 end
@@ -133,13 +173,11 @@ def evalPattern? (masks : Array Q(Nat)) : MetaM (Option (Array Nat)) := do
 
 /-- The row masks of `M`, by `listMask` on each row of a literal and by `Nat.ofBits` otherwise. -/
 def mkRowMasks {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α)) (n : Nat)
-    (M : Q(Matrix (Fin $n) (Fin $n) $α)) : MetaM (Array Q(Nat)) := do
-  match ← matchMatrixLit? M with
-  | some (_, _, _, entries) =>
-    return entries.map fun row ↦
-      let rowQ : List Q($α) := row.toList
-      q(listMask $(mkListLitQ rowQ))
-  | none =>
+    {M : Q(Matrix (Fin $n) (Fin $n) $α)} (view : MatrixView zα n n M) :
+    MetaM (Array Q(Nat)) := do
+  match view with
+  | .literal l _ => return l.rows.toArray.map fun row ↦ q(listMask $(mkListLitQ row))
+  | .functional =>
     Array.ofFnM (n := n) fun i ↦ do
       let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
       return q(Nat.ofBits fun j ↦ decide ($M $iQ j ≠ 0))
@@ -147,27 +185,34 @@ def mkRowMasks {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Decidab
 /-- Prove `¬M.IsIndecomposable` from the set `s` of rows whose entries outside `s` vanish, with
 `i` in `s` and `j` outside it. -/
 def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
-    (dα : Q(DecidableEq $α)) (n : Nat) (M : Q(Matrix (Fin $n) (Fin $n) $α)) (s : Array Bool)
-    (i j : Nat) : MetaM Q(¬($M).IsIndecomposable) := do
+    (dα : Q(DecidableEq $α)) (n : Nat) {M : Q(Matrix (Fin $n) (Fin $n) $α)}
+    (view : MatrixView zα n n M) (s : Array Bool) (i j : Nat) :
+    MetaM Q(¬($M).IsIndecomposable) := do
   let maskQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (s[·]!))
   let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
   let jQ : Q(Fin $n) ← mkNumeral q(Fin $n) j
-  let hc ← mkDecideProofQ q(rowsClosed (fun i j ↦ decide ($M i j ≠ 0)) $maskQ = true)
   let hij ← mkDecideProofQ q(Nat.testBit $maskQ $iQ ≠ Nat.testBit $maskQ $jQ)
-  return q((blockTriangular_of_rowsClosed $hc).not_isIndecomposable $hij)
+  match view with
+  | .literal l pf =>
+    let hc ← mkDecideProofQ q(rowsClosedLists $maskQ 0 $(l.lit) = true)
+    return q((blockTriangular_of_rowsClosedLists $pf $hc).not_isIndecomposable $hij)
+  | .functional =>
+    let hc ← mkDecideProofQ q(rowsClosed (fun i j ↦ decide ($M i j ≠ 0)) $maskQ = true)
+    return q((blockTriangular_of_rowsClosed $hc).not_isIndecomposable $hij)
 
 /-- Rewrite `M.IsIndecomposable` to `True` or `False` from the nonzero pattern `adj` of `M`. -/
 def proveIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
-    (n : Nat) (M : Q(Matrix (Fin $n) (Fin $n) $α)) (adj : Array Nat) : MetaM Simp.Result := do
+    (n : Nat) {M : Q(Matrix (Fin $n) (Fin $n) $α)} (view : MatrixView zα n n M)
+    (adj : Array Nat) : MetaM Simp.Result := do
   let (fwd, fwdSeen) := spanningTree n (fun p c ↦ adj[p]!.testBit c) 0
   -- The vertices reached from `0` are closed under the edges.
   if let some j := fwdSeen.findIdx? (!·) then
-    let pf ← certifyNotIsIndecomposable zα dα n M fwdSeen 0 j
+    let pf ← certifyNotIsIndecomposable zα dα n view fwdSeen 0 j
     return { expr := q(False), proof? := q(eq_false $pf) }
   let (bwd, bwdSeen) := spanningTree n (fun p c ↦ adj[c]!.testBit p) 0
   -- The vertices not reaching `0` are closed under the edges.
   if let some i := bwdSeen.findIdx? (!·) then
-    let pf ← certifyNotIsIndecomposable zα dα n M (bwdSeen.map (!·)) i 0
+    let pf ← certifyNotIsIndecomposable zα dα n view (bwdSeen.map (!·)) i 0
     return { expr := q(False), proof? := q(eq_false $pf) }
   let root : Q(Fin $n) ← mkNumeral q(Fin $n) 0
   let fwdQ ← mkEdgeListLitQ n fwd
@@ -194,11 +239,12 @@ def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
     return .done { expr := q(True), proof? := q(eq_true $pf) }
   have M : Q(Matrix (Fin $n) (Fin $n) $α) := M
   let .some dα ← trySynthInstanceQ q(DecidableEq $α) | return .continue
-  let some adj ← evalPattern? (← mkRowMasks zα dα n M)
+  let view ← MatrixView.parse zα n n M
+  let some adj ← evalPattern? (← mkRowMasks zα dα n view)
     | trace[Tactic.reduceIsIndecomposable]
         "the kernel cannot decide which entries are zero{indentExpr M}"
       return .continue
-  return .done (← proveIsIndecomposable zα dα n M adj)
+  return .done (← proveIsIndecomposable zα dα n view adj)
 
 end Mathlib.Tactic.Matrix
 

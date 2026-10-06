@@ -32,6 +32,11 @@ example : (!![0, 1, 0; 0, 0, 1; 1, 0, 0] : Matrix (Fin 3) (Fin 3) ℤ).IsIndecom
 example : ¬(!![1, 0, 0; 0, 1, 0; 0, 0, 1] : Matrix (Fin 3) (Fin 3) ℤ).IsIndecomposable := by
   simp [reduceIsIndecomposable]
 
+-- Rows `1` and `3` vanish outside columns `1` and `3`.
+example : ¬(!![1, 2, 3, 4; 0, 5, 0, 6; 7, 8, 9, 1; 0, 2, 0, 3] :
+    Matrix (Fin 4) (Fin 4) ℤ).IsIndecomposable := by
+  simp [reduceIsIndecomposable]
+
 /-! ## Matrices given by functions or constants -/
 
 example : (A 8).IsIndecomposable := by simp only [reduceIsIndecomposable]
