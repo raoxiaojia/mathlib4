@@ -61,18 +61,19 @@ theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Boo
   | nil => exact hsrc v hv
   | cons e es ih => exact ih (fun w hw ↦ by grind [Fin.ext_iff]) hv
 
-/-- Whether no edge leaves the set of rows given by the set bits of `s`. -/
+/-- Whether no edge leaves the set of vertices given by the set bits of `s`. -/
 def isClosed {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) : Bool :=
   (List.finRange n).all fun i ↦ !s.testBit i ||
     (List.finRange n).all fun j ↦ s.testBit j || !adj i j
 
-/-- The adjacency with an edge from `i` to `j` when bit `i * n + j` of `bits` is set. -/
+/-- The `n × n` Boolean adjacency matrix packed into `bits`, with entry `(i, j)` at bit
+`i * n + j`. -/
 def packedAdj (n bits : ℕ) (i j : Fin n) : Bool :=
   bits.testBit (i * n + j)
 
 /-- Whether no edge of the `n × n` Boolean adjacency matrix packed into `bits`, with entry `(i, j)`
-at bit `i * n + j`, leaves the set of rows given by the set bits of `s`. Each row of `bits` is read
-at once. -/
+at bit `i * n + j`, leaves the set of vertices given by the set bits of `s`. Each row of `bits` is
+read at once. -/
 def isClosedPacked (n bits s : ℕ) : Bool :=
   (List.range n).all fun i ↦
     let row := bits >>> (i * n) &&& (2 ^ n - 1)
@@ -214,7 +215,7 @@ def evalAdjMatrix? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Dec
   let env ← getEnv
   return masks.mapM fun mask ↦
     match Kernel.whnf env {} mask with
-    | .ok (.lit (.natVal m)) => some (Array.ofFn (n := n) fun j ↦ m.testBit j)
+    | .ok (.lit (.natVal m)) => some (Array.ofFn (n := n) (m.testBit ·))
     | _ => none
 
 /-- The `n × n` Boolean adjacency matrix `adjMatrix`, as the set bits of a natural number with entry
@@ -257,10 +258,10 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
     (adjMatrix : Array (Array Bool)) (s : Array Bool) : MetaM Q(¬($M).IsIndecomposable) := do
   let (some i, some j) := (s.findIdx? id, s.findIdx? (!·))
     | throwError "reduceIsIndecomposable: the set {s} is empty or full"
-  let maskQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (s[·]!))
+  let sQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (s[·]!))
   let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
   let jQ : Q(Fin $n) ← mkNumeral q(Fin $n) j
-  let hij ← mkDecideProofQ q(Nat.testBit $maskQ $iQ ≠ Nat.testBit $maskQ $jQ)
+  let hij ← mkDecideProofQ q(Nat.testBit $sQ $iQ ≠ Nat.testBit $sQ $jQ)
   match view, pf with
   | .literal zα' _ _ _ _ A, pf =>
     -- `parse` stores the instance it is given and reads the dimensions of `A` off the type
@@ -269,11 +270,11 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
     have pf : Q($M = ofLists $n $n $(A.lit)) := pf
     let bitsQ : Q(Nat) := mkNatLitQ (packAdjMatrix n adjMatrix)
     let hbits ← mkDecideProofQ q(packRows $n $(A.lit) = $bitsQ)
-    let hc ← mkDecideProofQ q(isClosedPacked $n $bitsQ $maskQ = true)
+    let hc ← mkDecideProofQ q(isClosedPacked $n $bitsQ $sQ = true)
     return q((blockTriangular_of_isClosed (packedAdj_eq_of_packRows_eq $pf $hbits)
       (isClosed_of_isClosedPacked $hc)).not_isIndecomposable $hij)
   | .functional f, pf =>
-    let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($f i j ≠ 0)) $maskQ = true)
+    let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($f i j ≠ 0)) $sQ = true)
     return q((blockTriangular_of_isClosed (decide_ne_zero_eq_of_eq_of $pf) $hc).not_isIndecomposable
       $hij)
 

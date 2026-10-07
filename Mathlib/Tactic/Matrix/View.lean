@@ -25,7 +25,7 @@ namespace Mathlib.Tactic.Matrix
 
 /-- Two forms of one list-based matrix literal. This makes the argument list more succinct when
 a cert construction function needs to use multiple representations. -/
-structure ListMatrixLit (u : Level) (m n : Nat) (α : Q(Type u)) where
+structure ListMatrixLit {u : Level} (α : Q(Type u)) (m n : Nat) where
   /-- The list literal of `rows`. -/
   lit : Q(List (List $α))
   /-- The rows of the matrix. -/
@@ -33,7 +33,7 @@ structure ListMatrixLit (u : Level) (m n : Nat) (α : Q(Type u)) where
 
 /-- The `ListMatrixLit` of the matrix with rows `rows`. -/
 def ListMatrixLit.ofArray {u : Level} {α : Q(Type u)} (m n : Nat)
-    (rows : Array (Array Q($α))) : ListMatrixLit u m n α :=
+    (rows : Array (Array Q($α))) : ListMatrixLit α m n :=
   let rows := rows.toList.map Array.toList
   let lit : Q(List (List $α)) := mkListLitQ (α := q(List $α)) (rows.map mkListLitQ)
   { lit, rows }
@@ -43,7 +43,7 @@ inductive MatrixView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
   /-- The matrix built by `ofLists` from the list-based literal `A`, when `m` is `Fin k` and `n`
   is `Fin l`. -/
   | literal (zα : Q(Zero $α)) (k l : Nat) (hm : $m =Q Fin $k) (hn : $n =Q Fin $l)
-      (A : ListMatrixLit u k l α)
+      (A : ListMatrixLit α k l)
   /-- The matrix built by `Matrix.of` from the function `f`. -/
   | functional (f : Q($m → $n → $α))
 
