@@ -218,10 +218,16 @@ def evalAdjMatrix? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Dec
     | .ok (.lit (.natVal m)) => some (Array.ofFn (n := n) (m.testBit ·))
     | _ => none
 
-/-- The `n × n` Boolean adjacency matrix `adjMatrix`, as the set bits of a natural number with entry
-`(i, j)` at bit `i * n + j`. -/
-def packAdjMatrix (n : Nat) (adjMatrix : Array (Array Bool)) : Nat :=
-  adjMatrix.foldr (fun row bits ↦ bits <<< n ||| Nat.ofBits (n := n) (row[·]!)) 0
+/-- The Boolean adjacency matrix `adjMatrix` of `M`, as a numeral with entry `(i, j)` at bit
+`i * n + j`, with the proof that it is that of `M`. -/
+def provePackedAdj {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
+    (n : Nat) {M : Q(Matrix (Fin $n) (Fin $n) $α)} (lit : Q(List (List $α)))
+    (pf : Q($M = ofLists $n $n $lit)) (adjMatrix : Array (Array Bool)) :
+    MetaM ((bits : Q(Nat)) × Q(∀ i j, packedAdj $n $bits i j = decide ($M i j ≠ 0))) := do
+  let bits : Q(Nat) := mkNatLitQ <|
+    adjMatrix.foldr (fun row acc ↦ acc <<< n ||| Nat.ofBits (n := n) (row[·]!)) 0
+  let hbits ← mkDecideProofQ q(packRows $n $lit = $bits)
+  return ⟨bits, q(packedAdj_eq_of_packRows_eq $pf $hbits)⟩
 
 /-- Prove `M.IsIndecomposable` from the search trees `fwd` from vertex `0` and `bwd` to it in the
 graph of the Boolean adjacency matrix `adjMatrix` of `M`. -/
@@ -231,15 +237,9 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (d�
     (fwd bwd : Array (Nat × Nat)) : MetaM Q(($M).IsIndecomposable) := do
   let ⟨adj, hadj⟩ : (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j = decide ($M i j ≠ 0)) ←
     match view, pf with
-    | .literal zα' _ _ _ _ A, pf => do
-      -- `parse` stores the instance it is given and reads the dimensions of `A` off the type
-      -- `Fin n` of `M`.
-      have : $zα' =Q $zα := ⟨⟩
-      have pf : Q($M = ofLists $n $n $(A.lit)) := pf
-      let bitsQ : Q(Nat) := mkNatLitQ (packAdjMatrix n adjMatrix)
-      let hbits ← mkDecideProofQ q(packRows $n $(A.lit) = $bitsQ)
-      let adj : Q(Fin $n → Fin $n → Bool) := q(packedAdj $n $bitsQ)
-      pure ⟨adj, q(packedAdj_eq_of_packRows_eq $pf $hbits)⟩
+    | .literal _ _ _ _ _ A, pf => do
+      let ⟨bits, hadj⟩ ← provePackedAdj zα dα n (M := M) A.lit pf adjMatrix
+      pure ⟨q(packedAdj $n $bits), hadj⟩
     | .functional f, pf =>
       let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ decide ($f i j ≠ 0))
       pure ⟨adj, q(decide_ne_zero_eq_of_eq_of $pf)⟩
@@ -267,12 +267,10 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
     -- `parse` stores the instance it is given and reads the dimensions of `A` off the type
     -- `Fin n` of `M`.
     have : $zα' =Q $zα := ⟨⟩
-    have pf : Q($M = ofLists $n $n $(A.lit)) := pf
-    let bitsQ : Q(Nat) := mkNatLitQ (packAdjMatrix n adjMatrix)
-    let hbits ← mkDecideProofQ q(packRows $n $(A.lit) = $bitsQ)
-    let hc ← mkDecideProofQ q(isClosedPacked $n $bitsQ $sQ = true)
-    return q((blockTriangular_of_isClosed (packedAdj_eq_of_packRows_eq $pf $hbits)
-      (isClosed_of_isClosedPacked $hc)).not_isIndecomposable $hij)
+    let ⟨bits, hadj⟩ ← provePackedAdj zα dα n (M := M) A.lit pf adjMatrix
+    let hc ← mkDecideProofQ q(isClosedPacked $n $bits $sQ = true)
+    return q((blockTriangular_of_isClosed $hadj (isClosed_of_isClosedPacked $hc))
+      |>.not_isIndecomposable $hij)
   | .functional f, pf =>
     let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($f i j ≠ 0)) $sQ = true)
     return q((blockTriangular_of_isClosed (decide_ne_zero_eq_of_eq_of $pf) $hc).not_isIndecomposable
