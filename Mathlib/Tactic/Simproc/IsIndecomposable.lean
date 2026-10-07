@@ -86,11 +86,11 @@ theorem isClosed_of_isClosedPacked {n bits s : ℕ} (h : isClosedPacked n bits s
 
 /-! ### Certificates for a matrix from its Boolean adjacency matrix -/
 
-variable {R : Type*} [Zero R] [DecidableEq R]
+variable {R : Type*} [Zero R]
 
 theorem isIndecomposable_of_reached {n : ℕ}
     {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
-    (hadj : ∀ i j, adj i j = decide (M i j ≠ 0)) {a : Fin n} {fwd bwd : List (Fin n × Fin n)}
+    (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {a : Fin n} {fwd bwd : List (Fin n × Fin n)}
     (hf : reached adj (1 <<< (a : ℕ)) fwd = 2 ^ n - 1)
     (hb : reached (fun i j ↦ adj j i) (1 <<< (a : ℕ)) bwd = 2 ^ n - 1) :
     M.IsIndecomposable := by
@@ -101,14 +101,16 @@ theorem isIndecomposable_of_reached {n : ℕ}
   refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
   have hi := key hb i
   have hj := key hf j
-  simp only [hadj, decide_eq_true_eq] at hi hj
+  simp only [hadj] at hi hj
   exact hi.swap.trans hj
 
 theorem blockTriangular_of_isClosed {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
-    {adj : Fin n → Fin n → Bool} (hadj : ∀ i j, adj i j = decide (M i j ≠ 0)) {s : ℕ}
+    {adj : Fin n → Fin n → Bool} (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {s : ℕ}
     (h : isClosed adj s = true) :
     M.BlockTriangular (s.testBit ·) := by
   grind [isClosed, BlockTriangular, Bool.lt_iff]
+
+variable [DecidableEq R]
 
 /-- The nonzero entries of `l`, as the set bits of a natural number. -/
 def listMask (l : List R) : ℕ :=
@@ -137,19 +139,20 @@ theorem testBit_packRows {n : ℕ} (rows : List (List R)) (i : ℕ) {j : ℕ} (h
   | cons row rows ih =>
     cases i <;> simp [packRows, testBit_listMask, hj, Nat.add_mul, Nat.add_right_comm _ n, ih]
 
-theorem packedAdj_eq_of_packRows_eq {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
+theorem packedAdj_iff_of_packRows_eq {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
     {rows : List (List R)} {bits : ℕ} (hM : M = ofLists n n rows) (hbits : packRows n rows = bits)
-    (i j : Fin n) : packedAdj n bits i j = decide (M i j ≠ 0) := by
-  rw [packedAdj, ← hbits, testBit_packRows rows i j.2, hM, ofLists_apply, ofList_apply]
+    (i j : Fin n) : packedAdj n bits i j ↔ M i j ≠ 0 := by
+  rw [packedAdj, ← hbits, testBit_packRows rows i j.2, hM, ofLists_apply, ofList_apply,
+    decide_eq_true_iff]
 
 /-- The Boolean adjacency matrix of the function `f`, with an edge from `i` to `j` when
 `f i j ≠ 0`. -/
 def adjOf {n : ℕ} (f : Fin n → Fin n → R) (i j : Fin n) : Bool :=
   decide (f i j ≠ 0)
 
-theorem adjOf_eq_of_eq_of {n : ℕ} {M : Matrix (Fin n) (Fin n) R} {f : Fin n → Fin n → R}
-    (hM : M = of f) (i j : Fin n) : adjOf f i j = decide (M i j ≠ 0) := by
-  rw [adjOf, hM, of_apply]
+theorem adjOf_iff_of_eq {n : ℕ} {M : Matrix (Fin n) (Fin n) R} {f : Fin n → Fin n → R}
+    (hM : M = of f) (i j : Fin n) : adjOf f i j ↔ M i j ≠ 0 := by
+  rw [adjOf, hM, of_apply, decide_eq_true_iff]
 
 end Mathlib.Tactic.Matrix.IsIndecomposable
 
@@ -226,21 +229,21 @@ def evalAdjMatrix? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Dec
     let some bits := eval q(packRows $n $(A.lit)) | return none
     return some <| Array.ofFn (n := n) fun i ↦ Array.ofFn (n := n) fun j ↦ bits.testBit (i * n + j)
   | .functional f =>
-    let rows ← Array.ofFnM (n := n) fun i ↦ do
+    OptionT.run <| Array.ofFnM (n := n) fun i ↦ do
       let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
-      return eval q(Nat.ofBits (adjOf $f $iQ))
-    return rows.mapM (·.map fun row ↦ Array.ofFn (n := n) (row.testBit ·))
+      let some row := eval q(Nat.ofBits (adjOf $f $iQ)) | failure
+      return Array.ofFn (n := n) (row.testBit ·)
 
 /-- The Boolean adjacency matrix `adjMatrix` of `M`, as a numeral with entry `(i, j)` at bit
 `i * n + j`, with the proof that it is that of `M`. -/
 def provePackedAdj {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
     (n : Nat) {M : Q(Matrix (Fin $n) (Fin $n) $α)} (lit : Q(List (List $α)))
     (pf : Q($M = ofLists $n $n $lit)) (adjMatrix : Array (Array Bool)) :
-    (bits : Q(Nat)) × Q(∀ i j, packedAdj $n $bits i j = decide ($M i j ≠ 0)) :=
+    (bits : Q(Nat)) × Q(∀ i j, packedAdj $n $bits i j ↔ $M i j ≠ 0) :=
   let bits : Q(Nat) := mkNatLitQ <|
     adjMatrix.foldr (fun row acc ↦ acc <<< n ||| Nat.ofBits (n := n) (row[·]!)) 0
   have : $bits =Q packRows $n $lit := ⟨⟩
-  ⟨bits, q(packedAdj_eq_of_packRows_eq $pf rfl)⟩
+  ⟨bits, q(packedAdj_iff_of_packRows_eq $pf rfl)⟩
 
 /-- Prove `A.matrix.IsIndecomposable` from the spanning out-tree `outTree` from vertex `0` and
 in-tree `inTree` to it in the graph of the Boolean adjacency matrix `adjMatrix` of `A.matrix`. -/
@@ -253,13 +256,13 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (d�
   match (dependent := true) A with
   | ⟨M, view, pf⟩ =>
     let ⟨adj, hadj⟩ :
-        (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j = decide ($M i j ≠ 0)) :=
+        (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j ↔ $M i j ≠ 0) :=
       match view with
       | .literal _ _ _ _ _ L =>
         -- `parse` reads the dimensions of `L` off the type `Fin n` of `M`.
         let ⟨bits, hadj⟩ := provePackedAdj zα dα n (M := M) L.lit pf adjMatrix
         ⟨q(packedAdj $n $bits), hadj⟩
-      | .functional f => ⟨q(adjOf $f), q(adjOf_eq_of_eq_of $pf)⟩
+      | .functional f => ⟨q(adjOf $f), q(adjOf_iff_of_eq $pf)⟩
     let hout ← mkDecideProofQ q(reached $adj (1 <<< ($root : Nat)) $outTreeQ = 2 ^ $n - 1)
     let hin ← mkDecideProofQ
       q(reached (fun i j ↦ $adj j i) (1 <<< ($root : Nat)) $inTreeQ = 2 ^ $n - 1)
@@ -288,7 +291,7 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
       |>.not_isIndecomposable $hij)
   | ⟨_, .functional f, pf⟩ =>
     let hc ← mkDecideProofQ q(isClosed (adjOf $f) $closedSetQ = true)
-    return q((blockTriangular_of_isClosed (adjOf_eq_of_eq_of $pf) $hc).not_isIndecomposable $hij)
+    return q((blockTriangular_of_isClosed (adjOf_iff_of_eq $pf) $hc).not_isIndecomposable $hij)
 
 /-- Core of the `Matrix.reduceIsIndecomposable` simproc. -/
 def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do

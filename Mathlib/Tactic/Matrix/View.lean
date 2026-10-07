@@ -68,7 +68,7 @@ structure MatrixWithView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
 functional view of `M` otherwise. -/
 def MatrixWithView.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
     (M : Q(Matrix $m $n $α)) : MetaM (MatrixWithView α m n) := do
-  let some (k, l, _, entries) ← matchMatrixLit? M
+  let some (k, l, _, entries) ← matchMatrixLit? M (closed := false)
     | let f : Q($m → $n → $α) := M
       return ⟨M, .functional f, q(rfl)⟩
   -- `matchMatrixLit?` read `k` and `l` off the type `Matrix (Fin k) (Fin l) α` of `M`.
