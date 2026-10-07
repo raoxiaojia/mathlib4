@@ -159,21 +159,21 @@ namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
 /-- Breadth-first search from `root` along `adj`, returning the tree edges in discovery order and
 the reached vertices. -/
-def breadthFirstSearch (n : Nat) (adj : Nat → Nat → Bool) (root : Nat) :
+def bfs (n : Nat) (adj : Nat → Nat → Bool) (root : Nat) :
     Array (Nat × Nat) × Array Bool := Id.run do
   let mut seen := (Array.replicate n false).set! root true
-  let mut edges := #[]
-  let mut frontier := #[root]
-  while !frontier.isEmpty do
+  let mut tree := #[]
+  let mut current := #[root]
+  while !current.isEmpty do
     let mut next := #[]
-    for p in frontier do
+    for p in current do
       for c in 0...n do
         if adj p c && !seen[c]! then
           seen := seen.set! c true
-          edges := edges.push (p, c)
+          tree := tree.push (p, c)
           next := next.push c
-    frontier := next
-  return (edges, seen)
+    current := next
+  return (tree, seen)
 
 /-- The list literal of the edges `edges`. -/
 def mkEdgeListLitQ (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n × Fin $n)) := do
@@ -185,23 +185,24 @@ def mkEdgeListLitQ (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n
 
 /-- The outcome of searching a directed graph from and to vertex `0`. -/
 inductive StrongConnectivity where
-  /-- The graph is strongly connected, with the search trees `fwd` from `0` and `bwd` to `0`. -/
-  | connected (fwd bwd : Array (Nat × Nat))
+  /-- The graph is strongly connected, with the spanning out-tree `outTree` from `0` and in-tree
+  `inTree` to `0`. -/
+  | connected (outTree inTree : Array (Nat × Nat))
   /-- The graph is not strongly connected. No edge leaves the nonempty proper set of vertices
-  `s`. -/
-  | disconnected (s : Array Bool)
+  `closedSet`. -/
+  | disconnected (closedSet : Array Bool)
 
 /-- Search the directed graph with Boolean adjacency matrix `adjMatrix` from and to vertex `0`. -/
 def decideStronglyConnected (adjMatrix : Array (Array Bool)) : StrongConnectivity :=
   let n := adjMatrix.size
   let adj (p c : Nat) : Bool := (adjMatrix[p]!)[c]!
-  let (fwd, fwdSeen) := breadthFirstSearch n adj 0
+  let (outTree, fromRoot) := bfs n adj 0
   -- The vertices reached from `0` are closed under the edges.
-  if fwdSeen.any (!·) then .disconnected fwdSeen else
-  let (bwd, bwdSeen) := breadthFirstSearch n (fun p c ↦ adj c p) 0
+  if !fromRoot.all id then .disconnected fromRoot else
+  let (inTree, toRoot) := bfs n (fun p c ↦ adj c p) 0
   -- The vertices not reaching `0` are closed under the edges.
-  if bwdSeen.any (!·) then .disconnected (bwdSeen.map (!·)) else
-  .connected fwd bwd
+  if !toRoot.all id then .disconnected (toRoot.map not) else
+  .connected outTree inTree
 
 /-- The Boolean adjacency matrix of the matrix that `view` builds, evaluated by the kernel one row
 at a time, or `none` when the kernel cannot decide which entries are zero. -/
@@ -229,12 +230,12 @@ def provePackedAdj {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Dec
   let hbits ← mkDecideProofQ q(packRows $n $lit = $bits)
   return ⟨bits, q(packedAdj_eq_of_packRows_eq $pf $hbits)⟩
 
-/-- Prove `M.IsIndecomposable` from the search trees `fwd` from vertex `0` and `bwd` to it in the
-graph of the Boolean adjacency matrix `adjMatrix` of `M`. -/
+/-- Prove `M.IsIndecomposable` from the spanning out-tree `outTree` from vertex `0` and in-tree
+`inTree` to it in the graph of the Boolean adjacency matrix `adjMatrix` of `M`. -/
 def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
     {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)} (view : MatrixView α q(Fin $n) q(Fin $n))
     (pf : Q($M = $(view.toMatrix))) (adjMatrix : Array (Array Bool))
-    (fwd bwd : Array (Nat × Nat)) : MetaM Q(($M).IsIndecomposable) := do
+    (outTree inTree : Array (Nat × Nat)) : MetaM Q(($M).IsIndecomposable) := do
   let ⟨adj, hadj⟩ : (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j = decide ($M i j ≠ 0)) ←
     match view, pf with
     | .literal _ _ _ _ _ A, pf => do
@@ -244,35 +245,37 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (d�
       let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ decide ($f i j ≠ 0))
       pure ⟨adj, q(decide_ne_zero_eq_of_eq_of $pf)⟩
   let root : Q(Fin $n) ← mkNumeral q(Fin $n) 0
-  let fwdQ ← mkEdgeListLitQ n fwd
-  let bwdQ ← mkEdgeListLitQ n bwd
-  let hf ← mkDecideProofQ q(reached $adj (1 <<< ($root : Nat)) $fwdQ = 2 ^ $n - 1)
-  let hb ← mkDecideProofQ q(reached (fun i j ↦ $adj j i) (1 <<< ($root : Nat)) $bwdQ = 2 ^ $n - 1)
-  return q(isIndecomposable_of_reached $hadj $hf $hb)
+  let outTreeQ ← mkEdgeListLitQ n outTree
+  let inTreeQ ← mkEdgeListLitQ n inTree
+  let hout ← mkDecideProofQ q(reached $adj (1 <<< ($root : Nat)) $outTreeQ = 2 ^ $n - 1)
+  let hin ← mkDecideProofQ
+    q(reached (fun i j ↦ $adj j i) (1 <<< ($root : Nat)) $inTreeQ = 2 ^ $n - 1)
+  return q(isIndecomposable_of_reached $hadj $hout $hin)
 
-/-- Prove `¬M.IsIndecomposable` from a nonempty proper set `s` of vertices that no edge of the
-Boolean adjacency matrix `adjMatrix` of `M` leaves. -/
+/-- Prove `¬M.IsIndecomposable` from a nonempty proper set `closedSet` of vertices that no edge of
+the Boolean adjacency matrix `adjMatrix` of `M` leaves. -/
 def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
     (dα : Q(DecidableEq $α)) {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)}
     (view : MatrixView α q(Fin $n) q(Fin $n)) (pf : Q($M = $(view.toMatrix)))
-    (adjMatrix : Array (Array Bool)) (s : Array Bool) : MetaM Q(¬($M).IsIndecomposable) := do
-  let (some i, some j) := (s.findIdx? id, s.findIdx? (!·))
-    | throwError "reduceIsIndecomposable: the set {s} is empty or full"
-  let sQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (s[·]!))
+    (adjMatrix : Array (Array Bool)) (closedSet : Array Bool) :
+    MetaM Q(¬($M).IsIndecomposable) := do
+  let (some i, some j) := (closedSet.findIdx? id, closedSet.findIdx? not)
+    | throwError "reduceIsIndecomposable: the closed set {closedSet} is empty or full"
+  let closedSetQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (closedSet[·]!))
   let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
   let jQ : Q(Fin $n) ← mkNumeral q(Fin $n) j
-  let hij ← mkDecideProofQ q(Nat.testBit $sQ $iQ ≠ Nat.testBit $sQ $jQ)
+  let hij ← mkDecideProofQ q(Nat.testBit $closedSetQ $iQ ≠ Nat.testBit $closedSetQ $jQ)
   match view, pf with
   | .literal zα' _ _ _ _ A, pf =>
     -- `parse` stores the instance it is given and reads the dimensions of `A` off the type
     -- `Fin n` of `M`.
     have : $zα' =Q $zα := ⟨⟩
     let ⟨bits, hadj⟩ ← provePackedAdj zα dα n (M := M) A.lit pf adjMatrix
-    let hc ← mkDecideProofQ q(isClosedPacked $n $bits $sQ = true)
+    let hc ← mkDecideProofQ q(isClosedPacked $n $bits $closedSetQ = true)
     return q((blockTriangular_of_isClosed $hadj (isClosed_of_isClosedPacked $hc))
       |>.not_isIndecomposable $hij)
   | .functional f, pf =>
-    let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($f i j ≠ 0)) $sQ = true)
+    let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($f i j ≠ 0)) $closedSetQ = true)
     return q((blockTriangular_of_isClosed (decide_ne_zero_eq_of_eq_of $pf) $hc).not_isIndecomposable
       $hij)
 
@@ -295,11 +298,11 @@ def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
   let ⟨view, hM⟩ ← MatrixView.parse zα M
   let some adjMatrix ← evalAdjMatrix? zα dα view | return .continue
   match decideStronglyConnected adjMatrix with
-  | .connected fwd bwd =>
-    let pf ← certifyIsIndecomposable zα dα view hM adjMatrix fwd bwd
+  | .connected outTree inTree =>
+    let pf ← certifyIsIndecomposable zα dα view hM adjMatrix outTree inTree
     return .done { expr := q(True), proof? := q(eq_true $pf) }
-  | .disconnected s =>
-    let pf ← certifyNotIsIndecomposable zα dα view hM adjMatrix s
+  | .disconnected closedSet =>
+    let pf ← certifyNotIsIndecomposable zα dα view hM adjMatrix closedSet
     return .done { expr := q(False), proof? := q(eq_false $pf) }
 
 end Mathlib.Tactic.Matrix.IsIndecomposable
