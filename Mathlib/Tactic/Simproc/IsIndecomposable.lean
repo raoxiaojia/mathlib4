@@ -140,6 +140,11 @@ theorem packedAdj_eq_of_packRows_eq {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
     (i j : Fin n) : packedAdj n bits i j = decide (M i j ≠ 0) := by
   rw [packedAdj, ← hbits, testBit_packRows rows i j.2, hM, ofLists_apply, ofList_apply]
 
+theorem decide_ne_zero_eq_of_eq_of {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
+    {f : Fin n → Fin n → R} (hM : M = of f) (i j : Fin n) :
+    decide (f i j ≠ 0) = decide (M i j ≠ 0) := by
+  rw [hM, of_apply]
+
 end Mathlib.Tactic.Matrix.IsIndecomposable
 
 end
@@ -205,9 +210,9 @@ def evalPattern? {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} (dα : Q(Decid
     MetaM (Option (Array (Array Bool))) := do
   let masks : Array Q(Nat) ← match view with
     | .literal l _ => pure <| l.rows.toArray.map fun row ↦ q(listMask $(mkListLitQ row))
-    | .functional => Array.ofFnM (n := n) fun i ↦ do
+    | .functional f _ => Array.ofFnM (n := n) fun i ↦ do
       let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
-      return q(Nat.ofBits fun j ↦ decide ($M $iQ j ≠ 0))
+      return q(Nat.ofBits fun j ↦ decide ($f $iQ j ≠ 0))
   let env ← getEnv
   return masks.mapM fun mask ↦
     match Kernel.whnf env {} mask with
@@ -232,9 +237,9 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} (d�
       let hbits ← mkDecideProofQ q(packRows $n $(l.lit) = $bitsQ)
       let adj : Q(Fin $n → Fin $n → Bool) := q(packedAdj $n $bitsQ)
       pure ⟨adj, q(packedAdj_eq_of_packRows_eq $pf $hbits)⟩
-    | .functional =>
-      let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ decide ($M i j ≠ 0))
-      pure ⟨adj, q(fun _ _ ↦ rfl)⟩
+    | .functional f pf =>
+      let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ decide ($f i j ≠ 0))
+      pure ⟨adj, q(decide_ne_zero_eq_of_eq_of $pf)⟩
   let root : Q(Fin $n) ← mkNumeral q(Fin $n) 0
   let fwdQ ← mkEdgeListLitQ n fwd
   let bwdQ ← mkEdgeListLitQ n bwd
@@ -261,9 +266,10 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)}
     let hc ← mkDecideProofQ q(isClosedPacked $n $bitsQ $maskQ = true)
     return q((blockTriangular_of_isClosed (packedAdj_eq_of_packRows_eq $pf $hbits)
       (isClosed_of_isClosedPacked $hc)).not_isIndecomposable $hij)
-  | .functional =>
-    let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($M i j ≠ 0)) $maskQ = true)
-    return q((blockTriangular_of_isClosed (fun _ _ ↦ rfl) $hc).not_isIndecomposable $hij)
+  | .functional f pf =>
+    let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($f i j ≠ 0)) $maskQ = true)
+    return q((blockTriangular_of_isClosed (decide_ne_zero_eq_of_eq_of $pf) $hc).not_isIndecomposable
+      $hij)
 
 /-- Core of the `Matrix.reduceIsIndecomposable` simproc. -/
 def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do

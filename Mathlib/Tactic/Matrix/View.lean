@@ -44,13 +44,15 @@ inductive MatrixView {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (m n : Nat
     (M : Q(Matrix (Fin $m) (Fin $n) $α)) where
   /-- `M` is a `!![…]` literal, equal to the list-based literal `l`. -/
   | literal (l : ListMatrixLit u m n α) (pf : Q($M = ofLists $m $n $(l.lit)))
-  /-- `M` is read entry by entry. -/
-  | functional
+  /-- `M` is the matrix of the function `f`, read entry by entry. -/
+  | functional (f : Q(Fin $m → Fin $n → $α)) (pf : Q($M = Matrix.of $f))
 
 /-- The view of `M` (`literal` for a closed `!![…]` literal and `functional` otherwise). -/
 def MatrixView.parse {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (m n : Nat)
     (M : Q(Matrix (Fin $m) (Fin $n) $α)) : MetaM (MatrixView zα m n M) := do
-  let some (_, _, _, entries) ← matchMatrixLit? M | return .functional
+  let some (_, _, _, entries) ← matchMatrixLit? M
+    | let f : Q(Fin $m → Fin $n → $α) := M
+      return .functional f q(rfl)
   let l := ListMatrixLit.ofArray zα m n entries
   have : $M =Q ofLists $m $n $(l.lit) := ⟨⟩
   return .literal l q(rfl)
