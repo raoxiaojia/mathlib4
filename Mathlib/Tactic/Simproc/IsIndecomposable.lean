@@ -153,8 +153,6 @@ public meta section
 
 open Lean Meta Qq Matrix
 
-initialize registerTraceClass `Tactic.reduceIsIndecomposable
-
 namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
 /-- Breadth-first search from `root` along `adj`, returning the tree edges in discovery order and
@@ -295,10 +293,7 @@ def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
   have M : Q(Matrix (Fin $n) (Fin $n) $α) := M
   let .some dα ← trySynthInstanceQ q(DecidableEq $α) | return .continue
   let ⟨view, hM⟩ ← MatrixView.parse zα M
-  let some pattern ← evalPattern? zα dα view
-    | trace[Tactic.reduceIsIndecomposable]
-        "the kernel cannot decide which entries are zero{indentExpr M}"
-      return .continue
+  let some pattern ← evalPattern? zα dα view | return .continue
   match decideStronglyConnected pattern with
   | .connected fwd bwd =>
     let pf ← certifyIsIndecomposable zα dα view hM pattern fwd bwd

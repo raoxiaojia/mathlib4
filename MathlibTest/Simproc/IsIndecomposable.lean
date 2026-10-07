@@ -46,26 +46,14 @@ example : (!![1/2, 1/3; 1/5, 0] : Matrix (Fin 2) (Fin 2) ℚ).IsIndecomposable :
 /-! ## Terms the simproc skips -/
 
 -- Equality on `ℝ` is classical, so the kernel cannot decide it.
-/--
-error: `simp` made no progress
----
-trace: [Tactic.reduceIsIndecomposable] the kernel cannot decide which entries are zero
-      !![1, 2; 3, 4]
--/
+/-- error: `simp` made no progress -/
 #guard_msgs in
-set_option trace.Tactic.reduceIsIndecomposable true in
 example : (!![1, 2; 3, 4] : Matrix (Fin 2) (Fin 2) ℝ).IsIndecomposable := by
   simp only [reduceIsIndecomposable]
 
--- a matrix that is not a literal
-/--
-error: `simp` made no progress
----
-trace: [Tactic.reduceIsIndecomposable] the kernel cannot decide which entries are zero
-      1
--/
+-- the same, for a matrix that is not a literal
+/-- error: `simp` made no progress -/
 #guard_msgs in
-set_option trace.Tactic.reduceIsIndecomposable true in
 example : (1 : Matrix (Fin 2) (Fin 2) ℝ).IsIndecomposable := by
   simp only [reduceIsIndecomposable]
 
