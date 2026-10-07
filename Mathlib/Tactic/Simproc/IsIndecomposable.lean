@@ -42,56 +42,79 @@ evaluates on literals.
 
 open Matrix Relation
 
-namespace Mathlib.Tactic.Matrix
+namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
-variable {R : Type*}
+/-! ### Directed graphs on `Fin n`, with sets of vertices as the set bits of a natural number -/
 
-/-- Whether the edges `es`, taken in order, each leave a vertex already reached, the reached
-vertices being the set bits of `seen`, and reach every vertex. -/
-def reachesAll {n : ℕ} (adj : Fin n → Fin n → Bool) (seen : ℕ) (es : List (Fin n × Fin n)) : Bool :=
-  match es with
-  | [] => seen == 2 ^ n - 1
-  | (p, c) :: es => seen.testBit p && adj p c && reachesAll adj (seen ||| 1 <<< (c : ℕ)) es
+/-- The vertices reached from the set bits of `src` by following the edges `es` in order, an edge
+counting only when it leaves a vertex already reached and is an edge of `adj`. -/
+def reached {n : ℕ} (adj : Fin n → Fin n → Bool) (src : ℕ) (es : List (Fin n × Fin n)) : ℕ :=
+  es.foldl (init := src) fun seen (p, c) ↦
+    bif seen.testBit p && adj p c then seen ||| 1 <<< (c : ℕ) else seen
 
-theorem reflTransGen_of_reachesAll {n : ℕ} {adj : Fin n → Fin n → Bool} {a : Fin n} {seen : ℕ}
-    {es : List (Fin n × Fin n)} (h : reachesAll adj seen es = true)
-    (hseen : ∀ v : Fin n, seen.testBit v → ReflTransGen (adj · ·) a v) (v : Fin n) :
-    ReflTransGen (adj · ·) a v := by
-  induction es generalizing seen with grind [reachesAll, Fin.ext_iff]
-
-theorem isIndecomposable_of_reachesAll {n : ℕ} [Zero R] [DecidableEq R]
-    {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
-    (hadj : ∀ i j, adj i j = decide (M i j ≠ 0)) {a : Fin n} {fwd bwd : List (Fin n × Fin n)}
-    (hf : reachesAll adj (1 <<< (a : ℕ)) fwd = true)
-    (hb : reachesAll (fun i j ↦ adj j i) (1 <<< (a : ℕ)) bwd = true) :
-    M.IsIndecomposable := by
-  have hseen {adj : Fin n → Fin n → Bool} (v : Fin n) (hv : (1 <<< (a : ℕ)).testBit v) :
-      ReflTransGen (adj · ·) a v := by
-    grind
-  refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
-  have hi := reflTransGen_of_reachesAll hb hseen i
-  have hj := reflTransGen_of_reachesAll hf hseen j
-  simp only [hadj, decide_eq_true_eq] at hi hj
-  exact (reflTransGen_swap.1 hi).trans hj
+theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Bool} {a : Fin n}
+    {src : ℕ} {es : List (Fin n × Fin n)}
+    (hsrc : ∀ v : Fin n, src.testBit v → ReflTransGen (adj · ·) a v) {v : Fin n}
+    (hv : (reached adj src es).testBit v) : ReflTransGen (adj · ·) a v := by
+  induction es generalizing src with
+  | nil => exact hsrc v hv
+  | cons e es ih => exact ih (fun w hw ↦ by grind [Fin.ext_iff]) hv
 
 /-- Whether no edge leaves the set of rows given by the set bits of `s`. -/
 def isClosed {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) : Bool :=
   (List.finRange n).all fun i ↦ !s.testBit i ||
     (List.finRange n).all fun j ↦ s.testBit j || !adj i j
 
-theorem blockTriangular_of_isClosed {n : ℕ} [Zero R] [DecidableEq R]
+/-- The adjacency with an edge from `i` to `j` when bit `i * n + j` of `bits` is set. -/
+def packedAdj (n bits : ℕ) (i j : Fin n) : Bool :=
+  bits.testBit (i * n + j)
+
+/-- Whether no edge of the nonzero pattern `bits` of an `n × n` matrix, with entry `(i, j)` at bit
+`i * n + j`, leaves the set of rows given by the set bits of `s`. Each row of `bits` is read at
+once. -/
+def isClosedPacked (n bits s : ℕ) : Bool :=
+  (List.range n).all fun i ↦
+    let row := bits >>> (i * n) &&& (2 ^ n - 1)
+    !s.testBit i || (row &&& s) == row
+
+theorem isClosed_of_isClosedPacked {n bits s : ℕ} (h : isClosedPacked n bits s = true) :
+    isClosed (packedAdj n bits) s = true := by
+  simp [isClosedPacked, Nat.eq_iff_testBit_eq] at h
+  grind [isClosed, packedAdj]
+
+/-! ### Certificates for the nonzero pattern of a matrix -/
+
+variable {R : Type*} [Zero R] [DecidableEq R]
+
+theorem isIndecomposable_of_reached {n : ℕ}
     {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
-    (hadj : ∀ i j, adj i j = decide (M i j ≠ 0)) {s : ℕ} (h : isClosed adj s = true) :
+    (hadj : ∀ i j, adj i j = decide (M i j ≠ 0)) {a : Fin n} {fwd bwd : List (Fin n × Fin n)}
+    (hf : reached adj (1 <<< (a : ℕ)) fwd = 2 ^ n - 1)
+    (hb : reached (fun i j ↦ adj j i) (1 <<< (a : ℕ)) bwd = 2 ^ n - 1) :
+    M.IsIndecomposable := by
+  have key {adj : Fin n → Fin n → Bool} {es : List (Fin n × Fin n)}
+      (h : reached adj (1 <<< (a : ℕ)) es = 2 ^ n - 1) (v : Fin n) :
+      ReflTransGen (adj · ·) a v :=
+    reflTransGen_of_testBit_reached (src := 1 <<< (a : ℕ)) (es := es) (by grind) (by simp [h])
+  refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
+  have hi := key hb i
+  have hj := key hf j
+  simp only [hadj, decide_eq_true_eq] at hi hj
+  exact hi.swap.trans hj
+
+theorem blockTriangular_of_isClosed {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
+    {adj : Fin n → Fin n → Bool} (hadj : ∀ i j, adj i j = decide (M i j ≠ 0)) {s : ℕ}
+    (h : isClosed adj s = true) :
     M.BlockTriangular (s.testBit ·) := by
   grind [isClosed, BlockTriangular, Bool.lt_iff]
 
 /-- The nonzero entries of `l`, as the set bits of a natural number. -/
-def listMask [Zero R] [DecidableEq R] (l : List R) : ℕ :=
+def listMask (l : List R) : ℕ :=
   match l with
   | [] => 0
   | a :: l => (if a = 0 then 0 else 1) ||| listMask l <<< 1
 
-theorem testBit_listMask [Zero R] [DecidableEq R] (l : List R) (j : ℕ) :
+theorem testBit_listMask (l : List R) (j : ℕ) :
     (listMask l).testBit j = decide (l.getD j 0 ≠ 0) := by
   induction l generalizing j with
   | nil => simp [listMask]
@@ -100,54 +123,24 @@ theorem testBit_listMask [Zero R] [DecidableEq R] (l : List R) (j : ℕ) :
 
 /-- The nonzero entries of the `n × n` matrix with rows `rows`, as the set bits of a natural number
 with entry `(i, j)` at bit `i * n + j`. -/
-def packRows [Zero R] [DecidableEq R] (n : ℕ) (rows : List (List R)) : ℕ :=
+def packRows (n : ℕ) (rows : List (List R)) : ℕ :=
   match rows with
   | [] => 0
   | row :: rows => (listMask row &&& (2 ^ n - 1)) ||| packRows n rows <<< n
 
-theorem testBit_packRows [Zero R] [DecidableEq R] {n : ℕ} (rows : List (List R)) (i : ℕ)
-    {j : ℕ} (hj : j < n) :
+theorem testBit_packRows {n : ℕ} (rows : List (List R)) (i : ℕ) {j : ℕ} (hj : j < n) :
     (packRows n rows).testBit (i * n + j) = decide ((rows.getD i []).getD j 0 ≠ 0) := by
   induction rows generalizing i with
   | nil => simp [packRows]
   | cons row rows ih =>
-    cases i with
-    | zero => simp [packRows, Nat.testBit_shiftLeft, testBit_listMask, hj]
-    | succ i =>
-      have h := ih i
-      have hle : n ≤ (i + 1) * n + j := by nlinarith
-      simp only [packRows, Nat.testBit_or, Nat.testBit_and, Nat.testBit_two_pow_sub_one,
-        Nat.testBit_shiftLeft, List.getD_cons_succ]
-      have : (i + 1) * n + j - n = i * n + j := by rw [Nat.succ_mul]; lia
-      simp [this, h, hle]
+    cases i <;> simp [packRows, testBit_listMask, hj, Nat.add_mul, Nat.add_right_comm _ n, ih]
 
-theorem testBit_eq_of_packRows_eq {n : ℕ} [Zero R] [DecidableEq R]
-    {M : Matrix (Fin n) (Fin n) R} {rows : List (List R)} {P : ℕ} (hM : M = ofLists n n rows)
-    (hP : packRows n rows = P) (i j : Fin n) : P.testBit (i * n + j) = decide (M i j ≠ 0) := by
-  subst hM hP
-  simp [testBit_packRows rows i j.2, ofLists_apply, ofList_apply]
+theorem packedAdj_eq_of_packRows_eq {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
+    {rows : List (List R)} {bits : ℕ} (hM : M = ofLists n n rows) (hbits : packRows n rows = bits)
+    (i j : Fin n) : packedAdj n bits i j = decide (M i j ≠ 0) := by
+  rw [packedAdj, ← hbits, testBit_packRows rows i j.2, hM, ofLists_apply, ofList_apply]
 
-/-- Whether no edge of the nonzero pattern `P` of an `n × n` matrix, with entry `(i, j)` at bit
-`i * n + j`, leaves the set of rows given by the set bits of `s`. Each row of `P` is read at
-once. -/
-def isClosedPacked (n P s : ℕ) : Bool :=
-  (List.range n).all fun i ↦
-    let row := P >>> (i * n) &&& (2 ^ n - 1)
-    !s.testBit i || (row &&& s) == row
-
-theorem isClosed_of_isClosedPacked {n P s : ℕ} (h : isClosedPacked n P s = true) :
-    isClosed (fun i j : Fin n ↦ P.testBit (i * n + j)) s = true := by
-  simp only [isClosedPacked, List.all_eq_true, List.mem_range, Bool.or_eq_true,
-    Bool.not_eq_true', beq_iff_eq] at h
-  simp only [isClosed, List.all_eq_true, List.mem_finRange, true_implies, Bool.or_eq_true,
-    Bool.not_eq_true']
-  intro i
-  refine (h i i.2).imp id fun hi j ↦ ?_
-  have := congrArg (Nat.testBit · j) hi
-  simp only [Nat.testBit_and, Nat.testBit_shiftRight, Nat.testBit_two_pow_sub_one, j.2] at this
-  grind
-
-end Mathlib.Tactic.Matrix
+end Mathlib.Tactic.Matrix.IsIndecomposable
 
 end
 
@@ -157,11 +150,11 @@ open Lean Meta Qq Matrix
 
 initialize registerTraceClass `Tactic.reduceIsIndecomposable
 
-namespace Mathlib.Tactic.Matrix
+namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
 /-- Breadth-first search from `root` along `adj`, returning the tree edges in discovery order and
 the reached vertices. -/
-def spanningTree (n : Nat) (adj : Nat → Nat → Bool) (root : Nat) :
+def breadthFirstSearch (n : Nat) (adj : Nat → Nat → Bool) (root : Nat) :
     Array (Nat × Nat) × Array Bool := Id.run do
   let mut seen := (Array.replicate n false).set! root true
   let mut edges := #[]
@@ -185,88 +178,92 @@ def mkEdgeListLitQ (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n
     return q(($pQ, $cQ))
   return mkListLitQ (α := q(Fin $n × Fin $n)) es
 
-/-- The nonzero pattern of a square matrix `M` of size `n`, with the adjacency the kernel checks
-certificates against. -/
-structure NonzeroPattern {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
-    (n : Nat) (M : Q(Matrix (Fin $n) (Fin $n) $α)) where
-  /-- The nonzero entries of `M`, as the set bits of a natural number with entry `(i, j)` at bit
-  `i * n + j`. -/
-  bits : Nat
-  /-- The adjacency the certificates are stated with. -/
-  adj : Q(Fin $n → Fin $n → Bool)
-  /-- The proof that `adj` is the nonzero pattern of `M`. -/
-  proof : Q(∀ i j, $adj i j = decide ($M i j ≠ 0))
-  /-- Prove that no edge of `adj` leaves the set given by the set bits of `s`. -/
-  certifyIsClosed (s : Q(Nat)) : MetaM Q(isClosed $adj $s = true)
+/-- The outcome of searching a directed graph from and to vertex `0`. -/
+inductive StrongConnectivity where
+  /-- The graph is strongly connected, with the search trees `fwd` from `0` and `bwd` to `0`. -/
+  | connected (fwd bwd : Array (Nat × Nat))
+  /-- The graph is not strongly connected. No edge leaves the nonempty proper set of vertices
+  `s`. -/
+  | disconnected (s : Array Bool)
 
-/-- The nonzero pattern of `M`, evaluated by the kernel, or `none` when the kernel cannot decide
-which entries are zero. A literal is packed by `packRows` and any other matrix is read entry by
-entry. -/
-def mkPattern? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α)) (n : Nat)
+/-- Search the directed graph with adjacency matrix `pattern` from and to vertex `0`. -/
+def decideStronglyConnected (pattern : Array (Array Bool)) : StrongConnectivity :=
+  let n := pattern.size
+  let adj (p c : Nat) : Bool := (pattern[p]!)[c]!
+  let (fwd, fwdSeen) := breadthFirstSearch n adj 0
+  -- The vertices reached from `0` are closed under the edges.
+  if fwdSeen.any (!·) then .disconnected fwdSeen else
+  let (bwd, bwdSeen) := breadthFirstSearch n (fun p c ↦ adj c p) 0
+  -- The vertices not reaching `0` are closed under the edges.
+  if bwdSeen.any (!·) then .disconnected (bwdSeen.map (!·)) else
+  .connected fwd bwd
+
+/-- The nonzero entries of `M`, row by row, evaluated by the kernel one row at a time, or `none`
+when the kernel cannot decide which entries are zero. -/
+def evalPattern? {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} (dα : Q(DecidableEq $α)) {n : Nat}
     {M : Q(Matrix (Fin $n) (Fin $n) $α)} (view : MatrixView zα n n M) :
-    MetaM (Option (NonzeroPattern zα dα n M)) := do
-  let env ← getEnv
-  match view with
-  | .literal l pf =>
-    let .ok (.lit (.natVal bits)) := Kernel.whnf env {} q(packRows $n $(l.lit)) | return none
-    let P : Q(Nat) := mkNatLitQ bits
-    let hP ← mkDecideProofQ q(packRows $n $(l.lit) = $P)
-    let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ Nat.testBit $P ((i : Nat) * $n + (j : Nat)))
-    return some {
-      bits, adj
-      proof := q(testBit_eq_of_packRows_eq $pf $hP)
-      certifyIsClosed s := do
-        let hc ← mkDecideProofQ q(isClosedPacked $n $P $s = true)
-        return q(isClosed_of_isClosedPacked $hc) }
-  | .functional =>
-    let mut bits := 0
-    for i in 0...n do
+    MetaM (Option (Array (Array Bool))) := do
+  let masks : Array Q(Nat) ← match view with
+    | .literal l _ => pure <| l.rows.toArray.map fun row ↦ q(listMask $(mkListLitQ row))
+    | .functional => Array.ofFnM (n := n) fun i ↦ do
       let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
-      let .ok (.lit (.natVal row)) := Kernel.whnf env {} q(Nat.ofBits fun j ↦ decide ($M $iQ j ≠ 0))
-        | return none
-      bits := bits ||| row <<< (i * n)
-    let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ decide ($M i j ≠ 0))
-    return some {
-      bits, adj
-      proof := q(fun _ _ ↦ rfl)
-      certifyIsClosed s := mkDecideProofQ q(isClosed $adj $s = true) }
+      return q(Nat.ofBits fun j ↦ decide ($M $iQ j ≠ 0))
+  let env ← getEnv
+  return masks.mapM fun mask ↦
+    match Kernel.whnf env {} mask with
+    | .ok (.lit (.natVal m)) => some (Array.ofFn (n := n) fun j ↦ m.testBit j)
+    | _ => none
 
-/-- Prove `¬M.IsIndecomposable` from the set `s` of rows whose entries outside `s` vanish, with
-`i` in `s` and `j` outside it. -/
+/-- The nonzero pattern `pattern` of a square matrix of size `n`, as the set bits of a natural
+number with entry `(i, j)` at bit `i * n + j`. -/
+def packPattern (n : Nat) (pattern : Array (Array Bool)) : Nat :=
+  pattern.foldr (fun row bits ↦ bits <<< n ||| Nat.ofBits (n := n) (row[·]!)) 0
+
+/-- Prove `M.IsIndecomposable` from the search trees `fwd` from vertex `0` and `bwd` to it in the
+nonzero pattern `pattern` of `M`. -/
+def certifyIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} (dα : Q(DecidableEq $α))
+    {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)} (view : MatrixView zα n n M)
+    (pattern : Array (Array Bool)) (fwd bwd : Array (Nat × Nat)) :
+    MetaM Q(($M).IsIndecomposable) := do
+  let ⟨adj, hadj⟩ : (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j = decide ($M i j ≠ 0)) ←
+    match view with
+    | .literal l pf => do
+      let bitsQ : Q(Nat) := mkNatLitQ (packPattern n pattern)
+      let hbits ← mkDecideProofQ q(packRows $n $(l.lit) = $bitsQ)
+      let adj : Q(Fin $n → Fin $n → Bool) := q(packedAdj $n $bitsQ)
+      pure ⟨adj, q(packedAdj_eq_of_packRows_eq $pf $hbits)⟩
+    | .functional =>
+      let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ decide ($M i j ≠ 0))
+      pure ⟨adj, q(fun _ _ ↦ rfl)⟩
+  let root : Q(Fin $n) ← mkNumeral q(Fin $n) 0
+  let fwdQ ← mkEdgeListLitQ n fwd
+  let bwdQ ← mkEdgeListLitQ n bwd
+  let hf ← mkDecideProofQ q(reached $adj (1 <<< ($root : Nat)) $fwdQ = 2 ^ $n - 1)
+  let hb ← mkDecideProofQ q(reached (fun i j ↦ $adj j i) (1 <<< ($root : Nat)) $bwdQ = 2 ^ $n - 1)
+  return q(isIndecomposable_of_reached $hadj $hf $hb)
+
+/-- Prove `¬M.IsIndecomposable` from a nonempty proper set `s` of vertices of the nonzero pattern
+`pattern` of `M` that no edge leaves. -/
 def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)}
-    {dα : Q(DecidableEq $α)} {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)}
-    (pat : NonzeroPattern zα dα n M) (s : Array Bool) (i j : Nat) :
+    (dα : Q(DecidableEq $α)) {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)}
+    (view : MatrixView zα n n M) (pattern : Array (Array Bool)) (s : Array Bool) :
     MetaM Q(¬($M).IsIndecomposable) := do
+  let (some i, some j) := (s.findIdx? id, s.findIdx? (!·))
+    | throwError "reduceIsIndecomposable: the set {s} is empty or full"
   let maskQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (s[·]!))
   let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
   let jQ : Q(Fin $n) ← mkNumeral q(Fin $n) j
   let hij ← mkDecideProofQ q(Nat.testBit $maskQ $iQ ≠ Nat.testBit $maskQ $jQ)
-  let hc ← pat.certifyIsClosed maskQ
-  return q((blockTriangular_of_isClosed $(pat.proof) $hc).not_isIndecomposable $hij)
-
-/-- Rewrite `M.IsIndecomposable` to `True` or `False` from the nonzero pattern `pat` of `M`. -/
-def proveIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)}
-    {dα : Q(DecidableEq $α)} {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)}
-    (pat : NonzeroPattern zα dα n M) : MetaM Simp.Result := do
-  let adj (p c : Nat) : Bool := pat.bits.testBit (p * n + c)
-  let (fwd, fwdSeen) := spanningTree n adj 0
-  -- The vertices reached from `0` are closed under the edges.
-  if let some j := fwdSeen.findIdx? (!·) then
-    let pf ← certifyNotIsIndecomposable pat fwdSeen 0 j
-    return { expr := q(False), proof? := q(eq_false $pf) }
-  let (bwd, bwdSeen) := spanningTree n (fun p c ↦ adj c p) 0
-  -- The vertices not reaching `0` are closed under the edges.
-  if let some i := bwdSeen.findIdx? (!·) then
-    let pf ← certifyNotIsIndecomposable pat (bwdSeen.map (!·)) i 0
-    return { expr := q(False), proof? := q(eq_false $pf) }
-  let root : Q(Fin $n) ← mkNumeral q(Fin $n) 0
-  let fwdQ ← mkEdgeListLitQ n fwd
-  let bwdQ ← mkEdgeListLitQ n bwd
-  let hf ← mkDecideProofQ q(reachesAll $(pat.adj) (1 <<< ($root : Nat)) $fwdQ = true)
-  let hb ← mkDecideProofQ
-    q(reachesAll (fun i j ↦ $(pat.adj) j i) (1 <<< ($root : Nat)) $bwdQ = true)
-  let pf : Q(($M).IsIndecomposable) := q(isIndecomposable_of_reachesAll $(pat.proof) $hf $hb)
-  return { expr := q(True), proof? := q(eq_true $pf) }
+  match view with
+  | .literal l pf =>
+    let bitsQ : Q(Nat) := mkNatLitQ (packPattern n pattern)
+    let hbits ← mkDecideProofQ q(packRows $n $(l.lit) = $bitsQ)
+    let hc ← mkDecideProofQ q(isClosedPacked $n $bitsQ $maskQ = true)
+    return q((blockTriangular_of_isClosed (packedAdj_eq_of_packRows_eq $pf $hbits)
+      (isClosed_of_isClosedPacked $hc)).not_isIndecomposable $hij)
+  | .functional =>
+    let hc ← mkDecideProofQ q(isClosed (fun i j ↦ decide ($M i j ≠ 0)) $maskQ = true)
+    return q((blockTriangular_of_isClosed (fun _ _ ↦ rfl) $hc).not_isIndecomposable $hij)
 
 /-- Core of the `Matrix.reduceIsIndecomposable` simproc. -/
 def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
@@ -283,19 +280,23 @@ def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
     let pf : Q(($M).IsIndecomposable) := q((isIndecomposable_iff_reflTransGen $M).2 (·.elim0))
     return .done { expr := q(True), proof? := q(eq_true $pf) }
   have M : Q(Matrix (Fin $n) (Fin $n) $α) := M
-  let dα : Q(DecidableEq $α) ← match ← trySynthInstanceQ q(DecidableEq $α) with
-    | .some dα => pure dα
-    | _ => return .continue
+  let .some dα ← trySynthInstanceQ q(DecidableEq $α) | return .continue
   let view ← MatrixView.parse zα n n M
-  let some pat ← mkPattern? zα dα n view
+  let some pattern ← evalPattern? dα view
     | trace[Tactic.reduceIsIndecomposable]
         "the kernel cannot decide which entries are zero{indentExpr M}"
       return .continue
-  return .done (← proveIsIndecomposable pat)
+  match decideStronglyConnected pattern with
+  | .connected fwd bwd =>
+    let pf ← certifyIsIndecomposable dα view pattern fwd bwd
+    return .done { expr := q(True), proof? := q(eq_true $pf) }
+  | .disconnected s =>
+    let pf ← certifyNotIsIndecomposable dα view pattern s
+    return .done { expr := q(False), proof? := q(eq_false $pf) }
 
-end Mathlib.Tactic.Matrix
+end Mathlib.Tactic.Matrix.IsIndecomposable
 
-open Mathlib.Tactic.Matrix
+open Mathlib.Tactic.Matrix.IsIndecomposable
 
 /-- `Matrix.reduceIsIndecomposable` decides `M.IsIndecomposable` for a closed matrix `M` indexed
 by `Fin n` with `n` a numeral, whose entries have an equality the kernel can decide. -/
