@@ -14,7 +14,7 @@ public import Mathlib.Util.Qq
 
 `MatrixView` is an alternative inductive type of matrices, whose constructors build a matrix from
 the rows of a list literal or from a function of its indices. `MatrixView.toMatrix` is the matrix a
-view builds, and `MatrixView.parse` finds a view of a given term with a proof that it builds it.
+view builds, and `MatrixWithView.parse` finds a view of a given term with a proof that it builds it.
 -/
 
 public meta section
@@ -23,8 +23,8 @@ open Lean Meta Qq
 
 namespace Mathlib.Tactic.Matrix
 
-/-- Two forms of one list-based matrix literal. This makes the argument list more succinct when
-a cert construction function needs to use multiple representations. -/
+/-- Two forms of one list-based matrix literal. This makes the argument list more succinct when a
+function needs several representations. -/
 structure ListMatrixLit {u : Level} (α : Q(Type u)) (m n : Nat) where
   /-- The list literal of `rows`. -/
   lit : Q(List (List $α))
@@ -62,10 +62,11 @@ structure MatrixWithView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
   /-- A view of `matrix`. -/
   view : MatrixView α m n
   /-- The proof that `view` builds `matrix`. -/
-  pf : Q($matrix = $(view.toMatrix))
+  proof : Q($matrix = $(view.toMatrix))
 
-/-- Parsing a `Matrix` literal to the corresponding view for its expression. -/
-def MatrixView.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
+/-- The term `M` with a view that builds it: the literal view when `M` is a `!![…]` literal, and the
+functional view of `M` otherwise. -/
+def MatrixWithView.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
     (M : Q(Matrix $m $n $α)) : MetaM (MatrixWithView α m n) := do
   let some (k, l, _, entries) ← matchMatrixLit? M
     | let f : Q($m → $n → $α) := M

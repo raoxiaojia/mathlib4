@@ -30,7 +30,7 @@ example : (E 8).IsIndecomposable := by simp only [reduceIsIndecomposable]
 example : ¬(D 2).IsIndecomposable := by
   simp [reduceIsIndecomposable]
 
--- no edge from `8` to `7`
+-- No edge from `8` to `7`, so the search from `0` succeeds and the search back to `0` fails.
 example : ¬IsIndecomposable (of fun i j : Fin 16 ↦ if i = j then (2 : ℤ)
     else if i.val + 1 = j.val then -1 else if j.val + 1 = i.val ∧ i.val ≠ 8 then -1 else 0) := by
   simp [reduceIsIndecomposable]
