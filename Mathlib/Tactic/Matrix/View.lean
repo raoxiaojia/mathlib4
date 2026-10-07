@@ -39,24 +39,25 @@ def ListMatrixLit.ofArray {u : Level} {α : Q(Type u)} (m n : Nat)
   { lit, rows }
 
 /-- Alternative constructors of matrices with rows indexed by `m` and columns by `n`. -/
-inductive MatrixView {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (m n : Q(Type)) where
+inductive MatrixView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
   /-- The matrix built by `ofLists` from the list-based literal `A`, when `m` is `Fin k` and `n`
   is `Fin l`. -/
-  | literal (k l : Nat) (hm : $m =Q Fin $k) (hn : $n =Q Fin $l) (A : ListMatrixLit u k l α)
+  | literal (zα : Q(Zero $α)) (k l : Nat) (hm : $m =Q Fin $k) (hn : $n =Q Fin $l)
+      (A : ListMatrixLit u k l α)
   /-- The matrix built by `Matrix.of` from the function `f`. -/
   | functional (f : Q($m → $n → $α))
 
 /-- The matrix that the view `v` builds. The body is exposed so that a consumer's quotations see
 `toMatrix` of a constructor reduce to its matrix. -/
-@[expose] def MatrixView.toMatrix {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} {m n : Q(Type)}
-    (v : MatrixView zα m n) : Q(Matrix $m $n $α) :=
+@[expose] def MatrixView.toMatrix {u : Level} {α : Q(Type u)} {m n : Q(Type)}
+    (v : MatrixView α m n) : Q(Matrix $m $n $α) :=
   match v with
-  | .literal k l _ _ A => q(ofLists $k $l $(A.lit))
+  | .literal _zα k l _ _ A => q(ofLists $k $l $(A.lit))
   | .functional f => q(Matrix.of $f)
 
 /-- Parsing a `Matrix` literal to the corresponding view for its expression. -/
 def MatrixView.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
-    (M : Q(Matrix $m $n $α)) : MetaM ((v : MatrixView zα m n) × Q($M = $(v.toMatrix))) := do
+    (M : Q(Matrix $m $n $α)) : MetaM ((v : MatrixView α m n) × Q($M = $(v.toMatrix))) := do
   let some (k, l, _, entries) ← matchMatrixLit? M
     | let f : Q($m → $n → $α) := M
       return ⟨.functional f, q(rfl)⟩
@@ -65,6 +66,6 @@ def MatrixView.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero 
   have hn : $n =Q Fin $l := ⟨⟩
   let A := ListMatrixLit.ofArray k l entries
   have : $M =Q ofLists $k $l $(A.lit) := ⟨⟩
-  return ⟨.literal k l hm hn A, q(rfl)⟩
+  return ⟨.literal zα k l hm hn A, q(rfl)⟩
 
 end Mathlib.Tactic.Matrix

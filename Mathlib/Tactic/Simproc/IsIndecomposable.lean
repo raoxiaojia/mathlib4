@@ -205,10 +205,10 @@ def decideStronglyConnected (pattern : Array (Array Bool)) : StrongConnectivity 
 
 /-- The nonzero entries of the matrix that `view` builds, row by row, evaluated by the kernel one
 row at a time, or `none` when the kernel cannot decide which entries are zero. -/
-def evalPattern? {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} (dα : Q(DecidableEq $α)) {n : Nat}
-    (view : MatrixView zα q(Fin $n) q(Fin $n)) : MetaM (Option (Array (Array Bool))) := do
+def evalPattern? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α)) {n : Nat}
+    (view : MatrixView α q(Fin $n) q(Fin $n)) : MetaM (Option (Array (Array Bool))) := do
   let masks : Array Q(Nat) ← match view with
-    | .literal _ _ _ _ A => pure <| A.rows.toArray.map fun row ↦ q(listMask $(mkListLitQ row))
+    | .literal _ _ _ _ _ A => pure <| A.rows.toArray.map fun row ↦ q(listMask $(mkListLitQ row))
     | .functional f => Array.ofFnM (n := n) fun i ↦ do
       let iQ : Q(Fin $n) ← mkNumeral q(Fin $n) i
       return q(Nat.ofBits fun j ↦ decide ($f $iQ j ≠ 0))
@@ -225,14 +225,16 @@ def packPattern (n : Nat) (pattern : Array (Array Bool)) : Nat :=
 
 /-- Prove `M.IsIndecomposable` from the search trees `fwd` from vertex `0` and `bwd` to it in the
 nonzero pattern `pattern` of `M`. -/
-def certifyIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} (dα : Q(DecidableEq $α))
-    {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)} (view : MatrixView zα q(Fin $n) q(Fin $n))
+def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
+    {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)} (view : MatrixView α q(Fin $n) q(Fin $n))
     (pf : Q($M = $(view.toMatrix))) (pattern : Array (Array Bool)) (fwd bwd : Array (Nat × Nat)) :
     MetaM Q(($M).IsIndecomposable) := do
   let ⟨adj, hadj⟩ : (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j = decide ($M i j ≠ 0)) ←
     match view, pf with
-    | .literal _ _ _ _ A, pf => do
-      -- `parse` reads the dimensions of `A` off the type `Fin n` of `M`.
+    | .literal zα' _ _ _ _ A, pf => do
+      -- `parse` stores the instance it is given and reads the dimensions of `A` off the type
+      -- `Fin n` of `M`.
+      have : $zα' =Q $zα := ⟨⟩
       have pf : Q($M = ofLists $n $n $(A.lit)) := pf
       let bitsQ : Q(Nat) := mkNatLitQ (packPattern n pattern)
       let hbits ← mkDecideProofQ q(packRows $n $(A.lit) = $bitsQ)
@@ -250,9 +252,9 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)} (d�
 
 /-- Prove `¬M.IsIndecomposable` from a nonempty proper set `s` of vertices of the nonzero pattern
 `pattern` of `M` that no edge leaves. -/
-def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)}
+def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
     (dα : Q(DecidableEq $α)) {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)}
-    (view : MatrixView zα q(Fin $n) q(Fin $n)) (pf : Q($M = $(view.toMatrix)))
+    (view : MatrixView α q(Fin $n) q(Fin $n)) (pf : Q($M = $(view.toMatrix)))
     (pattern : Array (Array Bool)) (s : Array Bool) : MetaM Q(¬($M).IsIndecomposable) := do
   let (some i, some j) := (s.findIdx? id, s.findIdx? (!·))
     | throwError "reduceIsIndecomposable: the set {s} is empty or full"
@@ -261,8 +263,10 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} {zα : Q(Zero $α)}
   let jQ : Q(Fin $n) ← mkNumeral q(Fin $n) j
   let hij ← mkDecideProofQ q(Nat.testBit $maskQ $iQ ≠ Nat.testBit $maskQ $jQ)
   match view, pf with
-  | .literal _ _ _ _ A, pf =>
-    -- `parse` reads the dimensions of `A` off the type `Fin n` of `M`.
+  | .literal zα' _ _ _ _ A, pf =>
+    -- `parse` stores the instance it is given and reads the dimensions of `A` off the type
+    -- `Fin n` of `M`.
+    have : $zα' =Q $zα := ⟨⟩
     have pf : Q($M = ofLists $n $n $(A.lit)) := pf
     let bitsQ : Q(Nat) := mkNatLitQ (packPattern n pattern)
     let hbits ← mkDecideProofQ q(packRows $n $(A.lit) = $bitsQ)
@@ -291,16 +295,16 @@ def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
   have M : Q(Matrix (Fin $n) (Fin $n) $α) := M
   let .some dα ← trySynthInstanceQ q(DecidableEq $α) | return .continue
   let ⟨view, hM⟩ ← MatrixView.parse zα M
-  let some pattern ← evalPattern? dα view
+  let some pattern ← evalPattern? zα dα view
     | trace[Tactic.reduceIsIndecomposable]
         "the kernel cannot decide which entries are zero{indentExpr M}"
       return .continue
   match decideStronglyConnected pattern with
   | .connected fwd bwd =>
-    let pf ← certifyIsIndecomposable dα view hM pattern fwd bwd
+    let pf ← certifyIsIndecomposable zα dα view hM pattern fwd bwd
     return .done { expr := q(True), proof? := q(eq_true $pf) }
   | .disconnected s =>
-    let pf ← certifyNotIsIndecomposable dα view hM pattern s
+    let pf ← certifyNotIsIndecomposable zα dα view hM pattern s
     return .done { expr := q(False), proof? := q(eq_false $pf) }
 
 end Mathlib.Tactic.Matrix.IsIndecomposable
