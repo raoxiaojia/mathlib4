@@ -224,11 +224,11 @@ def evalAdjMatrix? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Dec
 def provePackedAdj {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
     (n : Nat) {M : Q(Matrix (Fin $n) (Fin $n) $α)} (lit : Q(List (List $α)))
     (pf : Q($M = ofLists $n $n $lit)) (adjMatrix : Array (Array Bool)) :
-    MetaM ((bits : Q(Nat)) × Q(∀ i j, packedAdj $n $bits i j = decide ($M i j ≠ 0))) := do
+    (bits : Q(Nat)) × Q(∀ i j, packedAdj $n $bits i j = decide ($M i j ≠ 0)) :=
   let bits : Q(Nat) := mkNatLitQ <|
     adjMatrix.foldr (fun row acc ↦ acc <<< n ||| Nat.ofBits (n := n) (row[·]!)) 0
-  let hbits ← mkDecideProofQ q(packRows $n $lit = $bits)
-  return ⟨bits, q(packedAdj_eq_of_packRows_eq $pf $hbits)⟩
+  have : $bits =Q packRows $n $lit := ⟨⟩
+  ⟨bits, q(packedAdj_eq_of_packRows_eq $pf rfl)⟩
 
 /-- Prove `A.matrix.IsIndecomposable` from the spanning out-tree `outTree` from vertex `0` and
 in-tree `inTree` to it in the graph of the Boolean adjacency matrix `adjMatrix` of `A.matrix`. -/
@@ -237,14 +237,13 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (d�
     (outTree inTree : Array (Nat × Nat)) : MetaM Q(($(A.matrix)).IsIndecomposable) :=
   match A with
   | ⟨M, view, pf⟩ => do
-    let ⟨adj, hadj⟩ : (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j = decide ($M i j ≠ 0)) ←
-      match view, pf with
-      | .literal _ _ _ _ _ L, pf => do
-        let ⟨bits, hadj⟩ ← provePackedAdj zα dα n (M := M) L.lit pf adjMatrix
-        pure ⟨q(packedAdj $n $bits), hadj⟩
-      | .functional f, pf =>
-        let adj : Q(Fin $n → Fin $n → Bool) := q(fun i j ↦ decide ($f i j ≠ 0))
-        pure ⟨adj, q(decide_ne_zero_eq_of_eq_of $pf)⟩
+    let ⟨adj, hadj⟩ :
+        (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j = decide ($M i j ≠ 0)) :=
+      match view with
+      | .literal _ _ _ _ _ L =>
+        let ⟨bits, hadj⟩ := provePackedAdj zα dα n (M := M) L.lit pf adjMatrix
+        ⟨q(packedAdj $n $bits), hadj⟩
+      | .functional f => ⟨q(fun i j ↦ decide ($f i j ≠ 0)), q(decide_ne_zero_eq_of_eq_of $pf)⟩
     let root : Q(Fin $n) ← mkNumeral q(Fin $n) 0
     let outTreeQ ← mkEdgeListLitQ n outTree
     let inTreeQ ← mkEdgeListLitQ n inTree
@@ -272,7 +271,7 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
       -- `parse` stores the instance it is given and reads the dimensions of `L` off the type
       -- `Fin n` of `M`.
       have : $zα' =Q $zα := ⟨⟩
-      let ⟨bits, hadj⟩ ← provePackedAdj zα dα n (M := M) L.lit pf adjMatrix
+      let ⟨bits, hadj⟩ := provePackedAdj zα dα n (M := M) L.lit pf adjMatrix
       let hc ← mkDecideProofQ q(isClosedPacked $n $bits $closedSetQ = true)
       return q((blockTriangular_of_isClosed $hadj (isClosed_of_isClosedPacked $hc))
         |>.not_isIndecomposable $hij)
