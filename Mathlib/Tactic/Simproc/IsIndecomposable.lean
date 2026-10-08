@@ -118,40 +118,38 @@ theorem not_isIndecomposable_of_isClosed {n : ℕ} {M : Matrix (Fin n) (Fin n) R
     (by grind [isClosed, BlockTriangular, Bool.lt_iff])
   simp_all [funext_iff]
 
+/-! ### The Boolean adjacency matrix of a matrix literal or function -/
+
 variable [DecidableEq R]
 
-/-- The nonzero entries of `l`, as the set bits of a natural number. -/
-def listMask (l : List R) : ℕ :=
-  match l with
-  | [] => 0
-  | a :: l => (if a = 0 then 0 else 1) ||| listMask l <<< 1
-
-theorem testBit_listMask (l : List R) (j : ℕ) :
-    (listMask l).testBit j = decide (l.getD j 0 ≠ 0) := by
-  induction l generalizing j with
-  | nil => simp [listMask]
-  | cons a l ih =>
-    cases j <;> by_cases a = 0 <;> simp_all [listMask, Nat.testBit_one_eq_true_iff_self_eq_zero]
+/-- The nonzero entries of `row`, as the set bits of a natural number. -/
+def packRow (row : List R) : ℕ :=
+  row.foldr (fun (a : R) acc ↦ (if a = 0 then 0 else 1) ||| acc <<< 1) 0
 
 /-- The Boolean adjacency matrix of the `n × n` matrix with rows `rows`, as the set bits of a
 natural number with entry `(i, j)` at bit `i * n + j`. -/
 def packRows (n : ℕ) (rows : List (List R)) : ℕ :=
-  match rows with
-  | [] => 0
-  | row :: rows => (listMask row &&& (2 ^ n - 1)) ||| packRows n rows <<< n
+  rows.foldr (fun row acc ↦ (packRow row &&& (2 ^ n - 1)) ||| acc <<< n) 0
+
+theorem testBit_packRow (row : List R) (j : ℕ) :
+    (packRow row).testBit j = decide (row.getD j 0 ≠ 0) := by
+  induction row generalizing j with
+  | nil => simp [packRow]
+  | cons a row ih =>
+    cases j <;> by_cases a = 0 <;> simp_all [packRow, Nat.testBit_one_eq_true_iff_self_eq_zero]
 
 theorem testBit_packRows {n : ℕ} (rows : List (List R)) (i : ℕ) {j : ℕ} (hj : j < n) :
     (packRows n rows).testBit (i * n + j) = decide ((rows.getD i []).getD j 0 ≠ 0) := by
   induction rows generalizing i with
   | nil => simp [packRows]
   | cons row rows ih =>
-    cases i <;> simp [packRows, testBit_listMask, hj, Nat.add_mul, Nat.add_right_comm _ n, ih]
+    cases i <;> simp_all [packRows, testBit_packRow, Nat.add_mul, Nat.add_right_comm _ n]
 
 theorem packedAdj_iff_of_packRows_eq {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
     {rows : List (List R)} {bits : ℕ} (hM : M = ofLists n n rows) (hbits : packRows n rows = bits)
     (i j : Fin n) : packedAdj n bits i j ↔ M i j ≠ 0 := by
-  rw [packedAdj, ← hbits, testBit_packRows rows i j.2, hM, ofLists_apply, ofList_apply,
-    decide_eq_true_iff]
+  subst hM hbits
+  simp [packedAdj, testBit_packRows]
 
 /-- The Boolean adjacency matrix of the function `f`, with an edge from `i` to `j` when
 `f i j ≠ 0`. -/
@@ -199,7 +197,7 @@ def mkEdgeListLitQ (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n
   return mkListLitQ (α := q(Fin $n × Fin $n)) es
 
 /-- The outcome of searching a directed graph from and to vertex `0`. -/
-inductive StrongConnectivity where
+inductive StrongConnectivityResult where
   /-- The graph is strongly connected, with the spanning out-tree `outTree` from `0` and in-tree
   `inTree` to `0`. -/
   | connected (outTree inTree : Array (Nat × Nat))
@@ -208,7 +206,7 @@ inductive StrongConnectivity where
   | disconnected (closedSet : Array Bool)
 
 /-- Search the directed graph with Boolean adjacency matrix `adjMatrix` from and to vertex `0`. -/
-def decideStronglyConnected (adjMatrix : Array (Array Bool)) : StrongConnectivity :=
+def decideStronglyConnected (adjMatrix : Array (Array Bool)) : StrongConnectivityResult :=
   let n := adjMatrix.size
   let adj (p c : Nat) : Bool := (adjMatrix[p]!)[c]!
   let (outTree, fromRoot) := bfs n adj 0
