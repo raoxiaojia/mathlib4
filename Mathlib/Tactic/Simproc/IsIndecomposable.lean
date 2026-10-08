@@ -59,6 +59,15 @@ theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Boo
   | nil => exact hsrc v hv
   | cons e es ih => exact ih (fun w hw ↦ by grind [Fin.ext_iff]) hv
 
+/-- The edges `es`, followed in order from `a`, reach every vertex of `adj`. -/
+abbrev SpansFrom {n : ℕ} (adj : Fin n → Fin n → Bool) (es : List (Fin n × Fin n))
+    (a : Fin n) : Prop :=
+  reached adj (1 <<< (a : ℕ)) es = 2 ^ n - 1
+
+theorem SpansFrom.reflTransGen {n : ℕ} {adj : Fin n → Fin n → Bool} {es : List (Fin n × Fin n)}
+    {a : Fin n} (h : SpansFrom adj es a) (v : Fin n) : ReflTransGen (fun i j ↦ adj i j) a v :=
+  reflTransGen_of_testBit_reached (src := 1 <<< (a : ℕ)) (es := es) (by grind) (by simp [h])
+
 /-- Whether no edge leaves the set of vertices given by the set bits of `s`. -/
 def isClosed {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) : Bool :=
   (List.finRange n).all fun i ↦ !s.testBit i ||
@@ -86,19 +95,14 @@ theorem isClosed_of_isClosedPacked {n bits s : ℕ} (h : isClosedPacked n bits s
 
 variable {R : Type*} [Zero R]
 
-theorem isIndecomposable_of_reached {n : ℕ}
+theorem isIndecomposable_of_spansFrom {n : ℕ}
     {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
     (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {a : Fin n} {fwd bwd : List (Fin n × Fin n)}
-    (hf : reached adj (1 <<< (a : ℕ)) fwd = 2 ^ n - 1)
-    (hb : reached (fun i j ↦ adj j i) (1 <<< (a : ℕ)) bwd = 2 ^ n - 1) :
+    (hf : SpansFrom adj fwd a) (hb : SpansFrom (fun i j ↦ adj j i) bwd a) :
     M.IsIndecomposable := by
-  have key {adj : Fin n → Fin n → Bool} {es : List (Fin n × Fin n)}
-      (h : reached adj (1 <<< (a : ℕ)) es = 2 ^ n - 1) (v : Fin n) :
-      ReflTransGen (fun i j ↦ adj i j) a v :=
-    reflTransGen_of_testBit_reached (src := 1 <<< (a : ℕ)) (es := es) (by grind) (by simp [h])
   refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
-  have hi := key hb i
-  have hj := key hf j
+  have hi := hb.reflTransGen i
+  have hj := hf.reflTransGen j
   simp only [hadj] at hi hj
   exact hi.swap.trans hj
 
@@ -264,10 +268,9 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (d�
         let ⟨bits, hadj⟩ := provePackedAdj zα dα n (M := M) L.lit pf adjMatrix
         ⟨q(packedAdj $n $bits), hadj⟩
       | .functional f => ⟨q(adjOf $f), q(adjOf_iff_of_eq $pf)⟩
-    let hout ← mkDecideProofQ q(reached $adj (1 <<< ($root : Nat)) $outTreeQ = 2 ^ $n - 1)
-    let hin ← mkDecideProofQ
-      q(reached (fun i j ↦ $adj j i) (1 <<< ($root : Nat)) $inTreeQ = 2 ^ $n - 1)
-    return q(isIndecomposable_of_reached $hadj $hout $hin)
+    let hout ← mkDecideProofQ q(SpansFrom $adj $outTreeQ $root)
+    let hin ← mkDecideProofQ q(SpansFrom (fun i j ↦ $adj j i) $inTreeQ $root)
+    return q(isIndecomposable_of_spansFrom $hadj $hout $hin)
 
 /-- Prove `¬A.matrix.IsIndecomposable` from a nonempty proper set `closedSet` of vertices that no
 edge of the Boolean adjacency matrix `adjMatrix` of `A.matrix` leaves. -/
