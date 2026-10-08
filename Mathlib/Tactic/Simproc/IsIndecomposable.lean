@@ -104,11 +104,14 @@ theorem isIndecomposable_of_reached {n : ℕ}
   simp only [hadj] at hi hj
   exact hi.swap.trans hj
 
-theorem blockTriangular_of_isClosed {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
+theorem not_isIndecomposable_of_isClosed {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
     {adj : Fin n → Fin n → Bool} (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {s : ℕ}
-    (h : isClosed adj s = true) :
-    M.BlockTriangular (s.testBit ·) := by
-  grind [isClosed, BlockTriangular, Bool.lt_iff]
+    (h : isClosed adj s = true) {i j : Fin n} (hij : s.testBit i ≠ s.testBit j) :
+    ¬M.IsIndecomposable := by
+  intro hM
+  obtain ⟨a, ha⟩ := (isIndecomposable_iff_blockTriangular_const M).1 hM (s.testBit ·)
+    (by grind [isClosed, BlockTriangular, Bool.lt_iff])
+  simp_all [funext_iff]
 
 variable [DecidableEq R]
 
@@ -287,11 +290,10 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
     have : $zα' =Q $zα := ⟨⟩
     let ⟨bits, hadj⟩ := provePackedAdj zα dα n (M := M) L.lit pf adjMatrix
     let hc ← mkDecideProofQ q(isClosedPacked $n $bits $closedSetQ = true)
-    return q((blockTriangular_of_isClosed $hadj (isClosed_of_isClosedPacked $hc))
-      |>.not_isIndecomposable $hij)
+    return q(not_isIndecomposable_of_isClosed $hadj (isClosed_of_isClosedPacked $hc) $hij)
   | ⟨_, .functional f, pf⟩ =>
     let hc ← mkDecideProofQ q(isClosed (adjOf $f) $closedSetQ = true)
-    return q((blockTriangular_of_isClosed (adjOf_iff_of_eq $pf) $hc).not_isIndecomposable $hij)
+    return q(not_isIndecomposable_of_isClosed (adjOf_iff_of_eq $pf) $hc $hij)
 
 /-- Core of the `Matrix.reduceIsIndecomposable` simproc. -/
 def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do

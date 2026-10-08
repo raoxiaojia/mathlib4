@@ -287,13 +287,6 @@ lemma isIndecomposable_iff_blockTriangular_const [Nontrivial α] [Finite m] [Zer
     obtain rfl : a₂ = a₁ := by simpa using congr($ha (e <| .inr <| Nonempty.some ⟨⟨0, by lia⟩⟩))
     exact le_refl _
 
-lemma BlockTriangular.not_isIndecomposable [Finite m] [Zero R] (hM : M.BlockTriangular b)
-    {i j : m} (hij : b i ≠ b j) : ¬M.IsIndecomposable := by
-  have : Nontrivial α := ⟨⟨b i, b j, hij⟩⟩
-  intro h
-  obtain ⟨a, rfl⟩ := (isIndecomposable_iff_blockTriangular_const M).1 h b hM
-  exact hij rfl
-
 open Relation in
 lemma isIndecomposable_iff_reflTransGen [Finite m] [Zero R] (M : Matrix m m R) :
     M.IsIndecomposable ↔ ∀ i j, ReflTransGen (M · · ≠ 0) i j := by
