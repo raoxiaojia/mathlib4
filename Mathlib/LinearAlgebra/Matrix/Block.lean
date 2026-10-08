@@ -292,14 +292,12 @@ lemma isIndecomposable_iff_reflTransGen [Finite m] [Zero R] (M : Matrix m m R) :
     M.IsIndecomposable ↔ ∀ i j, ReflTransGen (fun i j ↦ M i j ≠ 0) i j := by
   classical
   rw [isIndecomposable_iff_blockTriangular_const (α := Bool)]
-  refine ⟨fun h i j ↦ ?_, fun h b hb ↦ ?_⟩
-  · obtain ⟨a, ha⟩ := h (fun k ↦ decide (ReflTransGen (fun i j ↦ M i j ≠ 0) i k))
+  refine ⟨fun hconst i j ↦ ?_, fun hreach b hb ↦ ?_⟩
+  · obtain ⟨a, ha⟩ := hconst (fun k ↦ decide (ReflTransGen (fun i j ↦ M i j ≠ 0) i k))
       fun x y hxy ↦ by grind [Bool.lt_iff]
-    have hi := congr_fun ha i
-    have hj := congr_fun ha j
-    grind
+    simpa [ReflTransGen.refl] using (congrFun ha j).trans (congrFun ha i).symm
   · have key (x y : m) : b x ≤ b y := by
-      induction h x y with grind [BlockTriangular]
+      induction hreach x y with grind [BlockTriangular]
     rcases isEmpty_or_nonempty m with hm | ⟨⟨x⟩⟩
     · exact ⟨false, funext hm.elim⟩
     · exact ⟨b x, funext fun y ↦ le_antisymm (key y x) (key x y)⟩
