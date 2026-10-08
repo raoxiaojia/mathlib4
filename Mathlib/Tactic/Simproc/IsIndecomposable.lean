@@ -22,8 +22,12 @@ square matrix `M` indexed by `Fin n`, whose entries have an equality the kernel 
 
 The question is essentially to determine whether the graph corresponding to `M` is strongly
 connected. The Boolean adjacency matrix of `M` has entry `(i, j)` true when `M i j ≠ 0`,
-currently evaluated by the kernel; for the functional representation this is the bottleneck,
-and future optimisation is possible by considering compiled evaluation of the function.
+currently evaluated by the kernel; for the functional representation this is the bottleneck.
+
+Two future optimisations are possible. Keeping one form of the adjacency matrix per view would let
+the search evaluate a function's rows only when it reaches them. Compiled evaluation of the
+function is faster, but in a `module` file the compiled code may only call definitions available
+at compile time, a set that depends on the importing file's whole import graph.
 
 There is an existing implementation of Tarjan's algorithm at `Order.Graph.Tarjan`, but it doesn't
 return a witness for the strongly connected components, and the algorithm is also an overkill.
@@ -219,10 +223,7 @@ def decideStronglyConnected (adjMatrix : Array (Array Bool)) : StrongConnectivit
 
 /-- The Boolean adjacency matrix of the matrix that `view` builds, evaluated by the kernel, or
 `none` when the kernel cannot decide which entries are zero. A literal is evaluated in one call to
-`packRows`, the number its certificates are checked against, and a function one row at a time.
-Compiled evaluation with `evalExpr` is faster on matrices given by functions, but in a `module`
-file the compiled code may only call definitions available at compile time, a set that depends on
-the importing file's whole import graph. -/
+`packRows`, the number its certificates are checked against, and a function one row at a time. -/
 def evalAdjMatrix? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α)) {n : Nat}
     (view : MatrixView α q(Fin $n) q(Fin $n)) : MetaM (Option (Array (Array Bool))) := do
   let env ← getEnv
@@ -240,8 +241,8 @@ def evalAdjMatrix? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Dec
       let some row := eval q(Nat.ofBits (adjOf $f $iQ)) | failure
       return Array.ofFn (n := n) (row.testBit ·)
 
-/-- The Boolean adjacency matrix `adjMatrix` of `M`, as a numeral with entry `(i, j)` at bit
-`i * n + j`, with the proof that it is that of `M`. -/
+/-- The numeral representing the Boolean adjacency matrix `adjMatrix` of `M`, with the proof that
+it is that of `M`. -/
 def provePackedAdj {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
     (n : Nat) {M : Q(Matrix (Fin $n) (Fin $n) $α)} (lit : Q(List (List $α)))
     (pf : Q($M = ofLists $n $n $lit)) (adjMatrix : Array (Array Bool)) :
