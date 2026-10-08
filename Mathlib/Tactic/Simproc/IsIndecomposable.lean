@@ -43,7 +43,7 @@ open Matrix Relation
 
 namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
-/-! ### Reachability and closed sets in a Boolean adjacency matrix -/
+/-! ### Reachability in a Boolean adjacency matrix -/
 
 /-- The vertices reached from the set bits of `s` by following the edges `es` in order, an edge
 counting only when it leaves a vertex already reached and is an edge of `adj`. -/
@@ -70,19 +70,20 @@ theorem SpansFrom.reflTransGen {n : ℕ} {adj : Fin n → Fin n → Bool} {es : 
     ReflTransGen (fun i j ↦ adj i j) root v :=
   reflTransGen_of_testBit_reached (s := 1 <<< (root : ℕ)) (es := es) (by grind) (by simp [h])
 
+/-! ### Closed sets of vertices in a Boolean adjacency matrix, and the packed version -/
+
 /-- Whether no edge leaves the set of vertices given by the set bits of `s`. -/
 def isClosed {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) : Bool :=
   (List.finRange n).all fun i ↦ !s.testBit i ||
     (List.finRange n).all fun j ↦ s.testBit j || !adj i j
 
-/-- The `n × n` Boolean adjacency matrix packed into `bits`, with entry `(i, j)` at bit
-`i * n + j`. -/
+/-- Entry `(i, j)` of the `n × n` Boolean adjacency matrix represented by `bits`. -/
 def packedAdj (n bits : ℕ) (i j : Fin n) : Bool :=
   bits.testBit (i * n + j)
 
-/-- Whether no edge of the `n × n` Boolean adjacency matrix packed into `bits`, with entry `(i, j)`
-at bit `i * n + j`, leaves the set of vertices given by the set bits of `s`. Each row of `bits` is
-read at once. -/
+/-- Whether no edge of the `n × n` Boolean adjacency matrix represented by `bits` leaves the set
+of vertices given by the set bits of `s`. Each row of `bits` is read at once, so this function
+only takes `O(n)` kernel steps. -/
 def isClosedPacked (n bits s : ℕ) : Bool :=
   (List.range n).all fun i ↦
     let row := bits >>> (i * n) &&& (2 ^ n - 1)
