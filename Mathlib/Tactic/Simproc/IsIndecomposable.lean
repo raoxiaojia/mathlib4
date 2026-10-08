@@ -25,9 +25,12 @@ connected. The Boolean adjacency matrix of `M` has entry `(i, j)` true when `M i
 currently evaluated by the kernel; for the functional representation this is the bottleneck,
 and future optimisation is possible by considering compiled evaluation of the function.
 
-The simproc runs two bfs on the graph from vertex `0` forwards and backwards. If all vertices are
-reached in both passes, then the indecomposability is certified by the two search trees. Otherwise,
-`M` is decomposable, witnessed by a set of rows whose entries outside the set evaluate to 0.
+There is an existing implementation of Tarjan's algorithm at `Order.Graph.Tarjan`, but it doesn't
+return a witness for the strongly connected components, and the algorithm is also an overkill.
+This simproc instead simply runs two bfs on the graph from vertex `0` forwards and backwards.
+If all vertices are reached in both passes, then the indecomposability is certified by the two
+search trees. Otherwise, `M` is decomposable, witnessed by a set of rows whose entries outside
+the set evaluate to 0.
 
 The Boolean adjacency matrix of a `!![…]` literal is packed into one natural number, with entry
 `(i, j)` at bit `i * n + j`, and both certificates are checked against that number, since reading
@@ -45,8 +48,8 @@ namespace Mathlib.Tactic.Matrix.IsIndecomposable
 /-- The vertices reached from the set bits of `src` by following the edges `es` in order, an edge
 counting only when it leaves a vertex already reached and is an edge of `adj`. -/
 def reached {n : ℕ} (adj : Fin n → Fin n → Bool) (src : ℕ) (es : List (Fin n × Fin n)) : ℕ :=
-  es.foldl (init := src) fun seen (p, c) ↦
-    bif seen.testBit p && adj p c then seen ||| 1 <<< (c : ℕ) else seen
+  es.foldl (init := src) fun visited (p, c) ↦
+    bif visited.testBit p && adj p c then visited ||| 1 <<< (c : ℕ) else visited
 
 theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Bool} {a : Fin n}
     {src : ℕ} {es : List (Fin n × Fin n)}
@@ -166,19 +169,19 @@ namespace Mathlib.Tactic.Matrix.IsIndecomposable
 the reached vertices. -/
 def bfs (n : Nat) (adj : Nat → Nat → Bool) (root : Nat) :
     Array (Nat × Nat) × Array Bool := Id.run do
-  let mut seen := (Array.replicate n false).set! root true
+  let mut visited := (Array.replicate n false).set! root true
   let mut tree := #[]
   let mut current := #[root]
   while !current.isEmpty do
     let mut next := #[]
     for p in current do
       for c in 0...n do
-        if adj p c && !seen[c]! then
-          seen := seen.set! c true
+        if adj p c && !visited[c]! then
+          visited := visited.set! c true
           tree := tree.push (p, c)
           next := next.push c
     current := next
-  return (tree, seen)
+  return (tree, visited)
 
 /-- The list literal of the edges `edges`. -/
 def mkEdgeListLitQ (n : Nat) (edges : Array (Nat × Nat)) : MetaM Q(List (Fin $n × Fin $n)) := do
