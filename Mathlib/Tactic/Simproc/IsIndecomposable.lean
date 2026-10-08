@@ -98,17 +98,17 @@ theorem isClosed_of_isClosedPacked {n bits s : ℕ} (h : isClosedPacked n bits s
 
 variable {R : Type*} [Zero R]
 
+/-- If both `adj` and the reverse of it have spanning trees from `root`, then `M` is
+indecomposable (strong connectivity of `adj`). -/
 theorem isIndecomposable_of_spansFrom {n : ℕ}
     {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
     (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {root : Fin n} {fwd bwd : List (Fin n × Fin n)}
     (hf : SpansFrom adj fwd root) (hb : SpansFrom (fun i j ↦ adj j i) bwd root) :
     M.IsIndecomposable := by
   refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
-  have hi := hb.reflTransGen i
-  have hj := hf.reflTransGen j
-  simp only [hadj] at hi hj
-  exact hi.swap.trans hj
+  simpa only [hadj] using (hb.reflTransGen i).swap.trans (hf.reflTransGen j)
 
+/-- If `adj` has a nonempty proper subset of vertices that is closed, then `M` is decomposable. -/
 theorem not_isIndecomposable_of_isClosed {n : ℕ} {M : Matrix (Fin n) (Fin n) R}
     {adj : Fin n → Fin n → Bool} (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {s : ℕ}
     (h : isClosed adj s = true) {i j : Fin n} (hij : s.testBit i ≠ s.testBit j) :
