@@ -20,23 +20,18 @@ square matrix `M` indexed by `Fin n`, whose entries have an equality the kernel 
 
 ## Implementation notes
 
-The Boolean adjacency matrix of `M` has entry `(i, j)` true when `M i j ≠ 0`. The simproc
-searches the directed graph it describes from vertex `0`, forwards and backwards. An
-indecomposable matrix is certified by the two search trees, which show that every vertex is
-reached from `0` and reaches `0`. A decomposable matrix is certified by a set of rows whose entries
-outside the set vanish, a block-triangular colouring of `M`. The kernel checks either certificate
-by evaluation.
+The question is essentially to determine whether the graph corresponding to `M` is strongly
+connected. The Boolean adjacency matrix of `M` has entry `(i, j)` true when `M i j ≠ 0`,
+currently evaluated by the kernel; for the functional representation this is the bottleneck,
+and future optimisation is possible by considering compiled evaluation of the function.
 
-The Boolean adjacency matrix is computed by the kernel too, so it agrees with the equality the
-certificates are checked against.
+The simproc runs two bfs on the graph from vertex `0` forwards and backwards. If all vertices are
+reached in both passes, then the indecomposability is certified by the two search trees. Otherwise,
+`M` is decomposable, witnessed by a set of rows whose entries outside the set evaluate to 0.
 
 The Boolean adjacency matrix of a `!![…]` literal is packed into one natural number, with entry
 `(i, j)` at bit `i * n + j`, and both certificates are checked against that number, since reading
-the literal by position costs the kernel a walk per entry. Any other matrix is read entry by
-entry, at the entries a certificate names.
-
-Reached vertices are tracked as the set bits of a natural number, whose bit operations the kernel
-evaluates on literals.
+the literal by position costs the kernel a walk per entry.
 -/
 
 @[expose] public section
