@@ -1,6 +1,9 @@
+module
+
+import Mathlib.Tactic.Simproc.IsIndecomposable
+
 import Mathlib.Basic.Real.Basic
 import Mathlib.LinearAlgebra.Matrix.Cartan.Basic
-import Mathlib.Tactic.Simproc.IsIndecomposable
 
 open Matrix CartanMatrix
 
