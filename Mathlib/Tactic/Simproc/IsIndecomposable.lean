@@ -45,28 +45,30 @@ namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
 /-! ### Reachability and closed sets in a Boolean adjacency matrix -/
 
-/-- The vertices reached from the set bits of `src` by following the edges `es` in order, an edge
+/-- The vertices reached from the set bits of `s` by following the edges `es` in order, an edge
 counting only when it leaves a vertex already reached and is an edge of `adj`. -/
-def reached {n : ℕ} (adj : Fin n → Fin n → Bool) (src : ℕ) (es : List (Fin n × Fin n)) : ℕ :=
-  es.foldl (init := src) fun visited (p, c) ↦
+def reached {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) (es : List (Fin n × Fin n)) : ℕ :=
+  es.foldl (init := s) fun visited (p, c) ↦
     bif visited.testBit p && adj p c then visited ||| 1 <<< (c : ℕ) else visited
 
-theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Bool} {a : Fin n}
-    {src : ℕ} {es : List (Fin n × Fin n)}
-    (hsrc : ∀ v : Fin n, src.testBit v → ReflTransGen (fun i j ↦ adj i j) a v) {v : Fin n}
-    (hv : (reached adj src es).testBit v) : ReflTransGen (fun i j ↦ adj i j) a v := by
-  induction es generalizing src with
-  | nil => exact hsrc v hv
+theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Bool} {root : Fin n}
+    {s : ℕ} {es : List (Fin n × Fin n)}
+    (hs : ∀ v : Fin n, s.testBit v → ReflTransGen (fun i j ↦ adj i j) root v) {v : Fin n}
+    (hv : (reached adj s es).testBit v) : ReflTransGen (fun i j ↦ adj i j) root v := by
+  induction es generalizing s with
+  | nil => exact hs v hv
   | cons e es ih => exact ih (fun w hw ↦ by grind [Fin.ext_iff]) hv
 
-/-- The edges `es`, followed in order from `a`, reach every vertex of `adj`. -/
+/-- The edges `es`, followed in order from `root`, reach every vertex of `adj`. -/
 abbrev SpansFrom {n : ℕ} (adj : Fin n → Fin n → Bool) (es : List (Fin n × Fin n))
-    (a : Fin n) : Prop :=
-  reached adj (1 <<< (a : ℕ)) es = 2 ^ n - 1
+    (root : Fin n) : Prop :=
+  reached adj (1 <<< (root : ℕ)) es = 2 ^ n - 1
 
+/-- If `adj` has a spanning tree from `root`, then `root` reaches every vertex. -/
 theorem SpansFrom.reflTransGen {n : ℕ} {adj : Fin n → Fin n → Bool} {es : List (Fin n × Fin n)}
-    {a : Fin n} (h : SpansFrom adj es a) (v : Fin n) : ReflTransGen (fun i j ↦ adj i j) a v :=
-  reflTransGen_of_testBit_reached (src := 1 <<< (a : ℕ)) (es := es) (by grind) (by simp [h])
+    {root : Fin n} (h : SpansFrom adj es root) (v : Fin n) :
+    ReflTransGen (fun i j ↦ adj i j) root v :=
+  reflTransGen_of_testBit_reached (s := 1 <<< (root : ℕ)) (es := es) (by grind) (by simp [h])
 
 /-- Whether no edge leaves the set of vertices given by the set bits of `s`. -/
 def isClosed {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) : Bool :=
@@ -97,8 +99,8 @@ variable {R : Type*} [Zero R]
 
 theorem isIndecomposable_of_spansFrom {n : ℕ}
     {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
-    (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {a : Fin n} {fwd bwd : List (Fin n × Fin n)}
-    (hf : SpansFrom adj fwd a) (hb : SpansFrom (fun i j ↦ adj j i) bwd a) :
+    (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {root : Fin n} {fwd bwd : List (Fin n × Fin n)}
+    (hf : SpansFrom adj fwd root) (hb : SpansFrom (fun i j ↦ adj j i) bwd root) :
     M.IsIndecomposable := by
   refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
   have hi := hb.reflTransGen i
