@@ -43,7 +43,7 @@ open Matrix Relation
 
 namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
-/-! ### Directed graphs on `Fin n`, with sets of vertices as the set bits of a natural number -/
+/-! ### Reachability and closed sets in a Boolean adjacency matrix -/
 
 /-- The vertices reached from the set bits of `src` by following the edges `es` in order, an edge
 counting only when it leaves a vertex already reached and is an edge of `adj`. -/
