@@ -289,12 +289,12 @@ lemma isIndecomposable_iff_blockTriangular_const [Nontrivial α] [Finite m] [Zer
 
 open Relation in
 lemma isIndecomposable_iff_reflTransGen [Finite m] [Zero R] (M : Matrix m m R) :
-    M.IsIndecomposable ↔ ∀ i j, ReflTransGen (M · · ≠ 0) i j := by
+    M.IsIndecomposable ↔ ∀ i j, ReflTransGen (fun i j ↦ M i j ≠ 0) i j := by
   classical
   rw [isIndecomposable_iff_blockTriangular_const (α := Bool)]
   refine ⟨fun h i j ↦ ?_, fun h b hb ↦ ?_⟩
-  · obtain ⟨a, ha⟩ := h (fun k ↦ decide (ReflTransGen (M · · ≠ 0) i k)) fun x y hxy ↦ by
-      grind [Bool.lt_iff]
+  · obtain ⟨a, ha⟩ := h (fun k ↦ decide (ReflTransGen (fun i j ↦ M i j ≠ 0) i k))
+      fun x y hxy ↦ by grind [Bool.lt_iff]
     have hi := congr_fun ha i
     have hj := congr_fun ha j
     grind

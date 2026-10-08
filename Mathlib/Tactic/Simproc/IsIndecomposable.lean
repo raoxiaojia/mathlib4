@@ -55,8 +55,8 @@ def reached {n : ℕ} (adj : Fin n → Fin n → Bool) (src : ℕ) (es : List (F
 
 theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Bool} {a : Fin n}
     {src : ℕ} {es : List (Fin n × Fin n)}
-    (hsrc : ∀ v : Fin n, src.testBit v → ReflTransGen (adj · ·) a v) {v : Fin n}
-    (hv : (reached adj src es).testBit v) : ReflTransGen (adj · ·) a v := by
+    (hsrc : ∀ v : Fin n, src.testBit v → ReflTransGen (fun i j ↦ adj i j) a v) {v : Fin n}
+    (hv : (reached adj src es).testBit v) : ReflTransGen (fun i j ↦ adj i j) a v := by
   induction es generalizing src with
   | nil => exact hsrc v hv
   | cons e es ih => exact ih (fun w hw ↦ by grind [Fin.ext_iff]) hv
@@ -96,7 +96,7 @@ theorem isIndecomposable_of_reached {n : ℕ}
     M.IsIndecomposable := by
   have key {adj : Fin n → Fin n → Bool} {es : List (Fin n × Fin n)}
       (h : reached adj (1 <<< (a : ℕ)) es = 2 ^ n - 1) (v : Fin n) :
-      ReflTransGen (adj · ·) a v :=
+      ReflTransGen (fun i j ↦ adj i j) a v :=
     reflTransGen_of_testBit_reached (src := 1 <<< (a : ℕ)) (es := es) (by grind) (by simp [h])
   refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
   have hi := key hb i
