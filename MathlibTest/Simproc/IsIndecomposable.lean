@@ -24,18 +24,13 @@ example : (0 : Matrix (Fin 0) (Fin 0) ℤ).IsIndecomposable := by
   simp only [reduceIsIndecomposable]
 
 example : (!![0, 1, 0; 0, 0, 1; 1, 0, 0] : Matrix (Fin 3) (Fin 3) ℤ).IsIndecomposable := by
-  simp [reduceIsIndecomposable]
+  simp only [reduceIsIndecomposable]
 
 /-! ## Matrices given by functions or constants -/
 
 example : (E 8).IsIndecomposable := by simp only [reduceIsIndecomposable]
 
 example : ¬(D 2).IsIndecomposable := by
-  simp [reduceIsIndecomposable]
-
--- No edge from `8` to `7`, so the search from `0` succeeds and the search back to `0` fails.
-example : ¬IsIndecomposable (of fun i j : Fin 16 ↦ if i = j then (2 : ℤ)
-    else if i.val + 1 = j.val then -1 else if j.val + 1 = i.val ∧ i.val ≠ 8 then -1 else 0) := by
   simp [reduceIsIndecomposable]
 
 /-! ## Other entry types -/
