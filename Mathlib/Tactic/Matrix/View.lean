@@ -14,7 +14,7 @@ public import Mathlib.Util.Qq
 
 `MatrixView` is an alternative inductive type of matrices, whose constructors build a matrix from
 the rows of a list literal or from a function of its indices. `MatrixView.toMatrix` is the matrix a
-view builds, and `MatrixWithView.parse` finds a view of a given term with a proof that it builds it.
+view builds, and `MatrixViewOf.parse` finds a view of a given term with a proof that it builds it.
 -/
 
 public meta section
@@ -55,27 +55,25 @@ inductive MatrixView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
   | .literal _zα k l _ _ A => q(ofLists $k $l $(A.lit))
   | .functional f => q(Matrix.of $f)
 
-/-- A matrix term with a view that builds it. -/
-structure MatrixWithView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
-  /-- The matrix. -/
-  matrix : Q(Matrix $m $n $α)
-  /-- A view of `matrix`. -/
+/-- A view that builds the matrix term `M`. -/
+structure MatrixViewOf {u : Level} {α : Q(Type u)} {m n : Q(Type)} (M : Q(Matrix $m $n $α)) where
+  /-- A view of `M`. -/
   view : MatrixView α m n
-  /-- The proof that `view` builds `matrix`. -/
-  proof : Q($matrix = $(view.toMatrix))
+  /-- The proof that `view` builds `M`. -/
+  proof : Q($M = $(view.toMatrix))
 
-/-- The term `M` with a view that builds it: the literal view when `M` is a `!![…]` literal, and the
+/-- A view that builds the term `M`: the literal view when `M` is a `!![…]` literal, and the
 functional view of `M` otherwise. -/
-def MatrixWithView.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
-    (M : Q(Matrix $m $n $α)) : MetaM (MatrixWithView α m n) := do
+def MatrixViewOf.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
+    (M : Q(Matrix $m $n $α)) : MetaM (MatrixViewOf M) := do
   let some (k, l, _, entries) ← matchMatrixLit? M (closed := false)
     | let f : Q($m → $n → $α) := M
-      return ⟨M, .functional f, q(rfl)⟩
+      return ⟨.functional f, q(rfl)⟩
   -- `matchMatrixLit?` read `k` and `l` off the type `Matrix (Fin k) (Fin l) α` of `M`.
   have hm : $m =Q Fin $k := ⟨⟩
   have hn : $n =Q Fin $l := ⟨⟩
   let A := ListMatrixLit.ofArray k l entries
   have : $M =Q ofLists $k $l $(A.lit) := ⟨⟩
-  return ⟨M, .literal zα k l hm hn A, q(rfl)⟩
+  return ⟨.literal zα k l hm hn A, q(rfl)⟩
 
 end Mathlib.Tactic.Matrix
