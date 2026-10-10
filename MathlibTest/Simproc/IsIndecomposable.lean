@@ -28,7 +28,12 @@ example : (!![0, 1, 0; 0, 0, 1; 1, 0, 0] : Matrix (Fin 3) (Fin 3) ℤ).IsIndecom
 
 /-! ## Matrices given by functions or constants -/
 
-example : (E 8).IsIndecomposable := by simp only [reduceIsIndecomposable]
+example : (of fun i j : Fin 2 ↦ if i = j then (2 : ℤ) else -1).IsIndecomposable := by
+  simp only [reduceIsIndecomposable]
+
+-- an existing definition, without rewriting it to a literal
+example : (E 8).IsIndecomposable := by
+  simp only [reduceIsIndecomposable]
 
 example : ¬(D 2).IsIndecomposable := by
   simp [reduceIsIndecomposable]
