@@ -16,17 +16,17 @@ import Mathlib.Util.Qq
 # Simproc deciding `Matrix.IsIndecomposable`
 
 `Matrix.reduceIsIndecomposable` rewrites `M.IsIndecomposable` to `True` or `False` for a closed
-square matrix `M` indexed by `Fin n`. Requires a kernel-decidable equality for the matrix
+square matrix `M` indexed by `Fin n`. This requires a kernel-decidable equality for the matrix
 entry type.
 
-This is equivalent to determining whether the graph corresponding to `M` is strongly
+This is equivalent to determining whether the directed graph corresponding to `M` is strongly
 connected.
 
 ## Main definitions
 
 - `Matrix.reduceIsIndecomposable`: the simproc deciding `M.IsIndecomposable`.
-- `SpansFrom`: a list of edges that reaches every vertex followed in order from a root vertex.
-- `isClosed`: a set of vertices with no edges leaving.
+- `SpansFrom`: states that a list of edges reaches every vertex expanding from a root.
+- `isClosed`: tests whether a set of vertices has no edges leaving it.
 - `packedAdj`: a Boolean adjacency matrix stored as the bits of a natural number, computed from a
   matrix literal by `packRows`.
 - `adjOf`: the Boolean adjacency matrix of a matrix given by a function.
@@ -84,7 +84,7 @@ abbrev SpansFrom {n : ℕ} (adj : Fin n → Fin n → Bool) (es : List (Fin n ×
     (root : Fin n) : Prop :=
   reached adj (1 <<< (root : ℕ)) es = 2 ^ n - 1
 
-/-- If `adj` has a spanning tree from `root`, then `root` reaches every vertex. -/
+/-- If `adj` has a spanning set of edges from `root`, then `root` reaches every vertex. -/
 theorem SpansFrom.reflTransGen {n : ℕ} {adj : Fin n → Fin n → Bool} {es : List (Fin n × Fin n)}
     {root : Fin n} (h : SpansFrom adj es root) (v : Fin n) :
     ReflTransGen (fun i j ↦ adj i j) root v :=
@@ -102,8 +102,7 @@ def packedAdj (n bits : ℕ) (i j : Fin n) : Bool :=
   bits.testBit (i * n + j)
 
 /-- Whether no edge of the `n × n` Boolean adjacency matrix represented by `bits` leaves the set
-of vertices given by the set bits of `s`. Each row of `bits` is read at once, so this function
-only takes `O(n)` kernel steps. -/
+of vertices given by the set bits of `s`. Each row of `bits` is read at once. -/
 def isClosedPacked (n bits s : ℕ) : Bool :=
   (List.range n).all fun i ↦
     let row := bits >>> (i * n) &&& (2 ^ n - 1)
@@ -118,7 +117,7 @@ theorem isClosed_of_isClosedPacked {n bits s : ℕ} (h : isClosedPacked n bits s
 
 variable {R : Type*} [Zero R]
 
-/-- If both `adj` and the reverse of it have spanning trees from `root`, then `M` is
+/-- If both `adj` and the reverse of it have spanning edge sets from `root`, then `M` is
 indecomposable (strong connectivity of `adj`). -/
 theorem isIndecomposable_of_spansFrom {n : ℕ}
     {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
@@ -146,7 +145,7 @@ variable [DecidableEq R]
 def packRow (row : List R) : ℕ :=
   row.foldr (fun (a : R) acc ↦ (if a = 0 then 0 else 1) ||| acc <<< 1) 0
 
-/-- The Boolean adjacency matrix of the `n × n` matrix with rows `rows`, as the set bits of a
+/-- The Boolean adjacency matrix of `rows` interpreted as an `n × n` matrix, as the set bits of a
 natural number with entry `(i, j)` at bit `i * n + j`. -/
 def packRows (n : ℕ) (rows : List (List R)) : ℕ :=
   rows.foldr (fun row acc ↦ (packRow row &&& (2 ^ n - 1)) ||| acc <<< n) 0
@@ -345,6 +344,6 @@ end Mathlib.Tactic.Matrix.IsIndecomposable
 open Mathlib.Tactic.Matrix.IsIndecomposable
 
 /-- `Matrix.reduceIsIndecomposable` decides `M.IsIndecomposable` for a closed matrix `M` indexed
-by `Fin n` with `n` a numeral, whose entries have an equality the kernel can decide. -/
+by `Fin n` with `n` a numeral, whose entry type has an equality the kernel can decide. -/
 simproc_decl Matrix.reduceIsIndecomposable (Matrix.IsIndecomposable _) :=
   reduceIsIndecomposableCore
