@@ -25,9 +25,9 @@ connected.
 ## Main definitions
 
 - `Matrix.reduceIsIndecomposable`: the simproc deciding `M.IsIndecomposable`.
-- `SpansFrom`: states that a list of edges reaches every vertex expanding from a root.
+- `SpansFrom`: states that every vertex is visited following a list of edges starting from a root.
 - `isClosed`: tests whether a set of vertices has no edges leaving it.
-- `packedAdj`: a Boolean adjacency matrix stored as the bits of a natural number, computed from a
+- `packedAdj`: a Boolean adjacency matrix stored as the bits of a natural number computed from a
   matrix literal by `packRows`.
 - `adjOf`: the Boolean adjacency matrix of a matrix given by a function.
 - `decideStronglyConnected`: searches the graph from and to vertex `0`, returning two spanning
@@ -65,8 +65,8 @@ namespace Mathlib.Tactic.Matrix.IsIndecomposable
 
 /-! ### Reachability in a Boolean adjacency matrix -/
 
-/-- The vertices reached from the set bits of `s` by following the edges `es` in order, an edge
-counting only when it leaves a vertex already reached and is an edge of `adj`. -/
+/-- The vertices reached from the set bits of `s` by following the edges `es` in order. An edge
+counts only when it leaves a vertex already reached and is an edge of `adj`. -/
 def reached {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) (es : List (Fin n × Fin n)) : ℕ :=
   es.foldl (init := s) fun visited (p, c) ↦
     bif visited.testBit p && adj p c then visited ||| 1 <<< (c : ℕ) else visited
@@ -79,12 +79,12 @@ theorem reflTransGen_of_testBit_reached {n : ℕ} {adj : Fin n → Fin n → Boo
   | nil => exact hs v hv
   | cons e es ih => exact ih (fun w hw ↦ by grind [Fin.ext_iff]) hv
 
-/-- The edges `es`, followed in order from `root`, reach every vertex of `adj`. -/
+/-- The edges `es` reach every vertex of `adj` starting from `root`. -/
 abbrev SpansFrom {n : ℕ} (adj : Fin n → Fin n → Bool) (es : List (Fin n × Fin n))
     (root : Fin n) : Prop :=
   reached adj (1 <<< (root : ℕ)) es = 2 ^ n - 1
 
-/-- If `adj` has a spanning set of edges from `root`, then `root` reaches every vertex. -/
+/-- If `adj` has a spanning list of edges from `root`, then `root` reaches every vertex. -/
 theorem SpansFrom.reflTransGen {n : ℕ} {adj : Fin n → Fin n → Bool} {es : List (Fin n × Fin n)}
     {root : Fin n} (h : SpansFrom adj es root) (v : Fin n) :
     ReflTransGen (fun i j ↦ adj i j) root v :=
@@ -92,7 +92,7 @@ theorem SpansFrom.reflTransGen {n : ℕ} {adj : Fin n → Fin n → Bool} {es : 
 
 /-! ### Closed sets of vertices in a Boolean adjacency matrix, and the packed version -/
 
-/-- Whether no edge leaves the set of vertices given by the set bits of `s`. -/
+/-- Whether no edge of `adj` leaves the set of vertices given by the set bits of `s`. -/
 def isClosed {n : ℕ} (adj : Fin n → Fin n → Bool) (s : ℕ) : Bool :=
   (List.finRange n).all fun i ↦ !s.testBit i ||
     (List.finRange n).all fun j ↦ s.testBit j || !adj i j
@@ -117,12 +117,12 @@ theorem isClosed_of_isClosedPacked {n bits s : ℕ} (h : isClosedPacked n bits s
 
 variable {R : Type*} [Zero R]
 
-/-- If both `adj` and the reverse of it have spanning edge sets from `root`, then `M` is
+/-- If both `adj` and its reverse have spanning edge lists from `root`, then `M` is
 indecomposable (strong connectivity of `adj`). -/
 theorem isIndecomposable_of_spansFrom {n : ℕ}
     {M : Matrix (Fin n) (Fin n) R} {adj : Fin n → Fin n → Bool}
     (hadj : ∀ i j, adj i j ↔ M i j ≠ 0) {root : Fin n} {fwd bwd : List (Fin n × Fin n)}
-    (hf : SpansFrom adj fwd root) (hb : SpansFrom (fun i j ↦ adj j i) bwd root) :
+    (hf : SpansFrom adj fwd root) (hb : SpansFrom (Function.swap adj) bwd root) :
     M.IsIndecomposable := by
   refine (isIndecomposable_iff_reflTransGen M).2 fun i j ↦ ?_
   simpa only [hadj] using (hb.reflTransGen i).swap.trans (hf.reflTransGen j)
@@ -231,7 +231,7 @@ def decideStronglyConnected (adjMatrix : Array (Array Bool)) : StrongConnectivit
   let (outTree, fromRoot) := bfs n adj 0
   -- The vertices reached from `0` are closed under the edges.
   if !fromRoot.all id then .disconnected fromRoot else
-  let (inTree, toRoot) := bfs n (fun p c ↦ adj c p) 0
+  let (inTree, toRoot) := bfs n (Function.swap adj) 0
   -- The vertices not reaching `0` are closed under the edges.
   if !toRoot.all id then .disconnected (toRoot.map not) else
   .connected outTree inTree
@@ -287,7 +287,7 @@ def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (d�
       ⟨q(packedAdj $n $bits), hadj⟩
     | .functional f => ⟨q(adjOf $f), q(adjOf_iff_of_eq $pf)⟩
   let hout ← mkDecideProofQ q(SpansFrom $adj $outTreeQ $root)
-  let hin ← mkDecideProofQ q(SpansFrom (fun i j ↦ $adj j i) $inTreeQ $root)
+  let hin ← mkDecideProofQ q(SpansFrom (Function.swap $adj) $inTreeQ $root)
   return q(isIndecomposable_of_spansFrom $hadj $hout $hin)
 
 /-- Prove `¬M.IsIndecomposable` from a nonempty proper set `closedSet` of vertices that no edge of
@@ -301,7 +301,10 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
   let closedSetQ : Q(Nat) := mkNatLitQ (Nat.ofBits (n := n) (closedSet[·]!))
   let iQ : Q(Fin $n) ← mkFinLitQ n i
   let jQ : Q(Fin $n) ← mkFinLitQ n j
-  let hij ← mkDecideProofQ q(Nat.testBit $closedSetQ $iQ ≠ Nat.testBit $closedSetQ $jQ)
+  let hd : Q(decide (Nat.testBit $closedSetQ $iQ = Nat.testBit $closedSetQ $jQ) = false) :=
+    (q(Eq.refl false) : Expr)
+  let hij : Q(Nat.testBit $closedSetQ $iQ ≠ Nat.testBit $closedSetQ $jQ) :=
+    q(of_decide_eq_false $hd)
   match A with
   | ⟨.literal zα' _ _ _ _ L, pf⟩ =>
     -- `parse` stores the instance it is given and reads the dimensions of `L` off the type
@@ -325,7 +328,7 @@ def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
   have zα : Q(Zero $α) := zR
   if n == 0 then
     have M : Q(Matrix (Fin 0) (Fin 0) $α) := M
-    let pf : Q(($M).IsIndecomposable) := q((isIndecomposable_iff_reflTransGen $M).2 (·.elim0))
+    let pf : Q(($M).IsIndecomposable) := q((isIndecomposable_iff_reflTransGen $M).2 isEmptyElim)
     return .done { expr := q(True), proof? := q(eq_true $pf) }
   have M : Q(Matrix (Fin $n) (Fin $n) $α) := M
   let .some dα ← trySynthInstanceQ q(DecidableEq $α) | return .continue
