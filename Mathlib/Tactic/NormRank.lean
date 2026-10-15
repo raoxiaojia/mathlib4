@@ -7,7 +7,7 @@ module
 
 public meta import Mathlib.Tactic.Echelon.Bareiss
 public import Mathlib.Tactic.Echelon.Bareiss
-public import Mathlib.Tactic.Matrix.Parsing
+public import Mathlib.Tactic.Matrix.View
 
 /-!
 # `eval_rank`: rank of matrix literals by Bareiss elimination
@@ -34,19 +34,27 @@ def normalizeRank {u : Level} {m n : Nat} {α : Q(Type u)} (rα : Q(CommRing $α
 
 /-- Core of the `norm_rank` simproc. -/
 def normRankCore : Simp.Simproc := fun e => do
-  let_expr Matrix.rank _ _ _ _ _ A := e | return .continue
+  let_expr Matrix.rank finM finN R _ _ A := e | return .continue
   let A ← instantiateMVars A
-  let some (m, n, R, entries) ← Matrix.matchMatrixLit? A
-    | trace[Tactic.evalRank] "not a closed matrix literal{indentExpr A}"
-      return .continue
+  let notLiteral : SimpM Simp.Step := do
+    trace[Tactic.evalRank] "not a closed matrix literal{indentExpr A}"
+    return .continue
   let u ← getDecLevel R
   have α : Q(Type u) := R
-  have A : Q(Matrix (Fin $m) (Fin $n) $α) := A
-  match ← inferBareissRing α with
-  | .ok rα => return .done (← normalizeRank rα e A entries)
-  | .error err =>
-    trace[Tactic.evalRank] "{err}{indentExpr A}"
-    return .continue
+  have finM : Q(Type) := finM
+  have finN : Q(Type) := finN
+  have A : Q(Matrix $finM $finN $α) := A
+  let some ⟨_, _, A, view⟩ ← Matrix.MatrixView.parse? A | notLiteral
+  match view with
+  | .functional _ =>
+    -- TODO: support a matrix given by a function or a definition by converting it to a literal.
+    notLiteral
+  | .literal L =>
+    match ← inferBareissRing α with
+    | .ok rα => return .done (← normalizeRank rα e A (L.rows.toArray.map List.toArray))
+    | .error err =>
+      trace[Tactic.evalRank] "{err}{indentExpr A}"
+      return .continue
 
 end Mathlib.Tactic.Echelon
 
