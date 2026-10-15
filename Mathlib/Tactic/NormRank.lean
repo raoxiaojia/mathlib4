@@ -34,24 +34,22 @@ def normalizeRank {u : Level} {m n : Nat} {α : Q(Type u)} (rα : Q(CommRing $α
 
 /-- Core of the `norm_rank` simproc. -/
 def normRankCore : Simp.Simproc := fun e => do
-  let_expr Matrix.rank m n R _ _ A := e | return .continue
+  let_expr Matrix.rank finM finN R _ _ A := e | return .continue
   let A ← instantiateMVars A
-  let u ← getDecLevel R
-  have α : Q(Type u) := R
-  have m : Q(Type) := m
-  have n : Q(Type) := n
-  have A : Q(Matrix $m $n $α) := A
-  let zα : Q(Zero $α) ← synthInstanceQ q(Zero $α)
-  match (← Matrix.MatrixViewOf.parse zα A).view with
-  | .functional _ =>
-    -- TODO: support a matrix given by a function or a definition by converting it to a literal.
+  let notLiteral : SimpM Simp.Step := do
     trace[Tactic.evalRank] "not a closed matrix literal{indentExpr A}"
     return .continue
-  | .literal _ kQ lQ _hm _hn L =>
-    let (some k, some l) := (← getNatValue? kQ, ← getNatValue? lQ) | return .continue
-    let ⟨(_ : $kQ =Q $k)⟩ ← assertDefEqQ kQ q($k)
-    let ⟨(_ : $lQ =Q $l)⟩ ← assertDefEqQ lQ q($l)
-    let A : Q(Matrix (Fin $k) (Fin $l) $α) := q($A)
+  let u ← getDecLevel R
+  have α : Q(Type u) := R
+  have finM : Q(Type) := finM
+  have finN : Q(Type) := finN
+  have A : Q(Matrix $finM $finN $α) := A
+  let some ⟨_, _, A, view⟩ ← Matrix.MatrixView.parse? A | notLiteral
+  match view with
+  | .functional _ =>
+    -- TODO: support a matrix given by a function or a definition by converting it to a literal.
+    notLiteral
+  | .literal L =>
     match ← inferBareissRing α with
     | .ok rα => return .done (← normalizeRank rα e A (L.rows.toArray.map List.toArray))
     | .error err =>

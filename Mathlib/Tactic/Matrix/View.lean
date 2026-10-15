@@ -13,8 +13,9 @@ public import Mathlib.Util.Qq
 # Views of matrix terms
 
 `MatrixView` is an alternative inductive type of matrices, whose constructors build a matrix from
-the rows of a list literal or from a function of its indices. `MatrixView.toMatrix` is the matrix a
-view builds, and `MatrixViewOf.parse` finds a view of a given term with a proof that it builds it.
+the rows of a list literal or from a function of its indices. `MatrixView.toMatrix` interpret
+the views to `Matrix` literals, and `MatrixView.proof` produces the `rfl` proof term at the
+right type. `MatrixView.parse` parses a view from a given `Matrix` expression.
 -/
 
 public meta section
@@ -38,49 +39,50 @@ def ListMatrixLit.ofArray {u : Level} {α : Q(Type u)} (rows : Array (Array Q($�
   let lit : Q(List (List $α)) := mkListLitQ (α := q(List $α)) (rows.map mkListLitQ)
   { lit, rows }
 
-/-- Alternative constructors of matrices with rows indexed by `m` and columns by `n`. -/
-inductive MatrixView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
-  /-- The matrix built by `ofLists` from the list-based literal `A`, when `m` is `Fin k` and `n`
-  is `Fin l`. -/
-  | literal (zα : Q(Zero $α)) (k l : Q(Nat)) (hm : $m =Q Fin $k) (hn : $n =Q Fin $l)
-      (A : ListMatrixLit α)
+/-- An alternative constructor of a matrix. Each constructor contains a source whose `.toMatrix`
+interpretation produces an `m × n` matrix defeq to `M`. The proof term is deliberately
+omitted in this type (therefore rendering `M` unused here) to avoid asking Qq to resolve
+dependent types. -/
+inductive MatrixView {u : Level} {α : Q(Type u)} (m n : Nat)
+    (M : Q(Matrix (Fin $m) (Fin $n) $α)) where
+  /-- The matrix built by `ofLists` from the list-based literal `A`. -/
+  | literal (A : ListMatrixLit α)
   /-- The matrix built by `Matrix.of` from the function `f`. -/
-  | functional (f : Q($m → $n → $α))
+  | functional (f : Q(Fin $m → Fin $n → $α))
 
-/-- The matrix that the view `v` builds. The body is exposed so that a consumer's quotations see
-`toMatrix` of a constructor reduce to its matrix. -/
-@[expose] def MatrixView.toMatrix {u : Level} {α : Q(Type u)} {m n : Q(Type)}
-    (v : MatrixView α m n) : Q(Matrix $m $n $α) :=
-  match v with
-  | .literal _zα k l _ _ A => q(ofLists $k $l $(A.lit))
+/-- Interpret a `view` as an `m × n` matrix. The body is exposed so that a consumer's
+quotations see `toMatrix` of a constructor reduce to its matrix. -/
+@[expose] def MatrixView.toMatrix {u : Level} {α : Q(Type u)} {m n : Nat}
+    {M : Q(Matrix (Fin $m) (Fin $n) $α)} (zα : Q(Zero $α)) (view : MatrixView m n M) :
+    Q(Matrix (Fin $m) (Fin $n) $α) :=
+  match view with
+  | .literal A => q(ofLists $m $n $(A.lit))
   | .functional f => q(Matrix.of $f)
 
-/-- A view that builds the matrix term `M`. -/
-structure MatrixViewOf {u : Level} {α : Q(Type u)} {m n : Q(Type)} (M : Q(Matrix $m $n $α)) where
-  /-- A view of `M`. -/
-  view : MatrixView α m n
-  /-- The proof that `view` builds `M`. -/
-  proof : Q($M = $(view.toMatrix))
+/-- The `rfl` proof of `M = view.toMatrix zα` at the correct type. -/
+def MatrixView.proof {u : Level} {α : Q(Type u)} {m n : Nat} {M : Q(Matrix (Fin $m) (Fin $n) $α)}
+    (zα : Q(Zero $α)) (view : MatrixView m n M) : Q($M = $(view.toMatrix zα)) :=
+  mkExpectedPropHint q(Eq.refl $M) q($M = $(view.toMatrix zα))
 
 /-- A view that builds the term `M`. It is the literal view when `M` is a `!![…]` literal, and the
 functional view of `M` otherwise. With `closed` (the default), only a literal without free
 variables or metavariables gets the literal view. -/
-def MatrixViewOf.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
-    (M : Q(Matrix $m $n $α)) (closed : Bool := true) : MetaM (MatrixViewOf M) := do
-  let f : Q($m → $n → $α) := M
-  let functional : MatrixViewOf M := ⟨.functional f, q(rfl)⟩
-  let some (_, _, _, entries) ← matchMatrixLit? M closed | return functional
-  let_expr Fin k := m | return functional
-  let_expr Fin l := n | return functional
-  have k : Q(Nat) := k
-  have l : Q(Nat) := l
-  -- The two matches above establish these.
-  have hm : $m =Q Fin $k := ⟨⟩
-  have hn : $n =Q Fin $l := ⟨⟩
-  let A := ListMatrixLit.ofArray entries
-  -- `M` is `ofLists k l A.lit` only up to reduction, so the kernel checks it.
-  have pf : Q($M = ofLists $k $l $(A.lit)) :=
-    mkExpectedPropHint q(Eq.refl $M) q($M = ofLists $k $l $(A.lit))
-  return ⟨.literal zα k l hm hn A, q($pf)⟩
+def MatrixView.parse {u : Level} {α : Q(Type u)} {m n : Nat} (M : Q(Matrix (Fin $m) (Fin $n) $α))
+    (closed : Bool := true) : MetaM (MatrixView m n M) := do
+  let some (_, _, _, entries) ← matchMatrixLit? M closed
+    | let f : Q(Fin $m → Fin $n → $α) := M
+      return .functional f
+  return .literal (.ofArray entries)
+
+/-- The view of `M` when its index types are `Fin m` and `Fin n` for numerals `m` and `n`, with `M`
+restated at those types, or `none` otherwise. -/
+def MatrixView.parse? {u : Level} {α : Q(Type u)} {finM finN : Q(Type)}
+    (M : Q(Matrix $finM $finN $α)) (closed : Bool := true) :
+    MetaM (Option ((m n : Nat) × (M' : Q(Matrix (Fin $m) (Fin $n) $α)) × MatrixView m n M')) := do
+  let_expr Fin mE := finM | return none
+  let_expr Fin nE := finN | return none
+  let (some m, some n) := (← getNatValue? mE, ← getNatValue? nE) | return none
+  have M : Q(Matrix (Fin $m) (Fin $n) $α) := M
+  return some ⟨m, n, M, ← MatrixView.parse M closed⟩
 
 end Mathlib.Tactic.Matrix
