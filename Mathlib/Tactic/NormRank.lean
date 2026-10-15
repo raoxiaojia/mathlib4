@@ -47,8 +47,11 @@ def normRankCore : Simp.Simproc := fun e => do
     -- TODO: support a matrix given by a function or a definition by converting it to a literal.
     trace[Tactic.evalRank] "not a closed matrix literal{indentExpr A}"
     return .continue
-  | .literal _ k l _ _ L =>
-    have A : Q(Matrix (Fin $k) (Fin $l) $α) := A
+  | .literal _ kQ lQ _hm _hn L =>
+    let (some k, some l) := (← getNatValue? kQ, ← getNatValue? lQ) | return .continue
+    let ⟨(_ : $kQ =Q $k)⟩ ← assertDefEqQ kQ q($k)
+    let ⟨(_ : $lQ =Q $l)⟩ ← assertDefEqQ lQ q($l)
+    let A : Q(Matrix (Fin $k) (Fin $l) $α) := q($A)
     match ← inferBareissRing α with
     | .ok rα => return .done (← normalizeRank rα e A (L.rows.toArray.map List.toArray))
     | .error err =>

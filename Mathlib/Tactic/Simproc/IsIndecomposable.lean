@@ -258,43 +258,42 @@ def evalAdjMatrix? {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(Dec
       let some row := eval q(Nat.ofBits (adjOf $f $iQ)) | failure
       return Array.ofFn (n := n) (row.testBit ·)
 
-/-- The numeral representing the Boolean adjacency matrix `adjMatrix` of `M`, with the proof that
-it is that of `M`. -/
+/-- The Boolean adjacency matrix of `M` packed by `packRows`, with the proof that it is that of
+`M`. -/
 def certifyPackedAdj {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
     (n : Nat) {M : Q(Matrix (Fin $n) (Fin $n) $α)} (lit : Q(List (List $α)))
-    (pf : Q($M = ofLists $n $n $lit)) (adjMatrix : Array (Array Bool)) :
+    (pf : Q($M = ofLists $n $n $lit)) :
     (bits : Q(Nat)) × Q(∀ i j, packedAdj $n $bits i j ↔ $M i j ≠ 0) :=
-  let bits : Q(Nat) := mkNatLitQ <|
-    adjMatrix.foldr (fun row acc ↦ acc <<< n ||| Nat.ofBits (n := n) (row[·]!)) 0
-  have : $bits =Q packRows $n $lit := ⟨⟩
-  ⟨bits, q(packedAdj_iff_of_packRows_eq $pf rfl)⟩
+  ⟨q(packRows $n $lit), q(packedAdj_iff_of_packRows_eq $pf rfl)⟩
 
 /-- Prove `M.IsIndecomposable` from the spanning out-tree `outTree` from vertex `0` and in-tree
-`inTree` to it in the graph of the Boolean adjacency matrix `adjMatrix` of `M`. -/
+`inTree` to it in the graph of the Boolean adjacency matrix of `M`. -/
 def certifyIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α)) (dα : Q(DecidableEq $α))
     {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)} (A : MatrixViewOf M)
-    (adjMatrix : Array (Array Bool)) (outTree inTree : Array (Nat × Nat)) :
-    MetaM Q(($M).IsIndecomposable) := do
+    (outTree inTree : Array (Nat × Nat)) : MetaM Q(($M).IsIndecomposable) := do
   let root : Q(Fin $n) ← mkFinLitQ n 0
   let outTreeQ ← mkEdgeListLitQ n outTree
   let inTreeQ ← mkEdgeListLitQ n inTree
-  let ⟨view, pf⟩ := A
-  let ⟨adj, hadj⟩ : (adj : Q(Fin $n → Fin $n → Bool)) × Q(∀ i j, $adj i j ↔ $M i j ≠ 0) :=
-    match view with
-    | .literal _ _ _ _ _ L =>
-      -- `parse` reads the dimensions of `L` off the type `Fin n` of `M`.
-      let ⟨bits, hadj⟩ := certifyPackedAdj zα dα n (M := M) L.lit pf adjMatrix
-      ⟨q(packedAdj $n $bits), hadj⟩
-    | .functional f => ⟨q(adjOf $f), q(adjOf_iff_of_eq $pf)⟩
-  let hout ← mkDecideProofQ q(SpansFrom $adj $outTreeQ $root)
-  let hin ← mkDecideProofQ q(SpansFrom (Function.swap $adj) $inTreeQ $root)
-  return q(isIndecomposable_of_spansFrom $hadj $hout $hin)
+  let certify (adj : Q(Fin $n → Fin $n → Bool)) (hadj : Q(∀ i j, $adj i j ↔ $M i j ≠ 0)) :
+      MetaM Q(($M).IsIndecomposable) := do
+    let hout ← mkDecideProofQ q(SpansFrom $adj $outTreeQ $root)
+    let hin ← mkDecideProofQ q(SpansFrom (Function.swap $adj) $inTreeQ $root)
+    return q(isIndecomposable_of_spansFrom $hadj $hout $hin)
+  match A with
+  | ⟨.literal zα' k l _ _ L, pf⟩ =>
+    -- `parse` stores the instance it is given and reads `k` and `l` off the index type `Fin n`.
+    let ⟨(_ : $zα' =Q $zα)⟩ ← assertDefEqQ zα' zα
+    let ⟨(_ : $k =Q $n)⟩ ← assertDefEqQ k q($n)
+    let ⟨(_ : $l =Q $n)⟩ ← assertDefEqQ l q($n)
+    let ⟨bits, hadj⟩ := certifyPackedAdj zα dα n (M := M) L.lit q($pf)
+    certify q(packedAdj $n $bits) hadj
+  | ⟨.functional f, pf⟩ => certify q(adjOf $f) q(adjOf_iff_of_eq $pf)
 
 /-- Prove `¬M.IsIndecomposable` from a nonempty proper set `closedSet` of vertices that no edge of
-the Boolean adjacency matrix `adjMatrix` of `M` leaves. -/
+the Boolean adjacency matrix of `M` leaves. -/
 def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
     (dα : Q(DecidableEq $α)) {n : Nat} {M : Q(Matrix (Fin $n) (Fin $n) $α)}
-    (A : MatrixViewOf M) (adjMatrix : Array (Array Bool)) (closedSet : Array Bool) :
+    (A : MatrixViewOf M) (closedSet : Array Bool) :
     MetaM Q(¬($M).IsIndecomposable) := do
   let (some i, some j) := (closedSet.findIdx? id, closedSet.findIdx? not)
     | throwError "reduceIsIndecomposable: the closed set {closedSet} is empty or full"
@@ -306,11 +305,12 @@ def certifyNotIsIndecomposable {u : Level} {α : Q(Type u)} (zα : Q(Zero $α))
   let hij : Q(Nat.testBit $closedSetQ $iQ ≠ Nat.testBit $closedSetQ $jQ) :=
     q(of_decide_eq_false $hd)
   match A with
-  | ⟨.literal zα' _ _ _ _ L, pf⟩ =>
-    -- `parse` stores the instance it is given and reads the dimensions of `L` off the type
-    -- `Fin n` of `M`.
-    have : $zα' =Q $zα := ⟨⟩
-    let ⟨bits, hadj⟩ := certifyPackedAdj zα dα n (M := M) L.lit pf adjMatrix
+  | ⟨.literal zα' k l _ _ L, pf⟩ =>
+    -- `parse` stores the instance it is given and reads `k` and `l` off the index type `Fin n`.
+    let ⟨(_ : $zα' =Q $zα)⟩ ← assertDefEqQ zα' zα
+    let ⟨(_ : $k =Q $n)⟩ ← assertDefEqQ k q($n)
+    let ⟨(_ : $l =Q $n)⟩ ← assertDefEqQ l q($n)
+    let ⟨bits, hadj⟩ := certifyPackedAdj zα dα n (M := M) L.lit q($pf)
     let hc ← mkDecideProofQ q(isClosedPacked $n $bits $closedSetQ = true)
     return q(not_isIndecomposable_of_isClosed $hadj (isClosed_of_isClosedPacked $hc) $hij)
   | ⟨.functional f, pf⟩ =>
@@ -330,16 +330,20 @@ def reduceIsIndecomposableCore : Simp.Simproc := fun e ↦ do
     have M : Q(Matrix (Fin 0) (Fin 0) $α) := M
     let pf : Q(($M).IsIndecomposable) := q((isIndecomposable_iff_reflTransGen $M).2 isEmptyElim)
     return .done { expr := q(True), proof? := q(eq_true $pf) }
-  have M : Q(Matrix (Fin $n) (Fin $n) $α) := M
+  have m : Q(Type) := finN
+  have M : Q(Matrix $m $m $α) := M
+  -- `m` is `Fin nE` for the numeral `nE`, so this only compares how the numeral is written.
+  let ⟨(_ : $m =Q Fin $n)⟩ ← assertDefEqQ m q(Fin $n)
+  let M : Q(Matrix (Fin $n) (Fin $n) $α) := q($M)
   let .some dα ← trySynthInstanceQ q(DecidableEq $α) | return .continue
   let A ← MatrixViewOf.parse zα M
   let some adjMatrix ← evalAdjMatrix? zα dα A.view | return .continue
   match decideStronglyConnected adjMatrix with
   | .connected outTree inTree =>
-    let pf ← certifyIsIndecomposable zα dα A adjMatrix outTree inTree
+    let pf ← certifyIsIndecomposable zα dα A outTree inTree
     return .done { expr := q(True), proof? := q(eq_true $pf) }
   | .disconnected closedSet =>
-    let pf ← certifyNotIsIndecomposable zα dα A adjMatrix closedSet
+    let pf ← certifyNotIsIndecomposable zα dα A closedSet
     return .done { expr := q(False), proof? := q(eq_false $pf) }
 
 end Mathlib.Tactic.Matrix.IsIndecomposable

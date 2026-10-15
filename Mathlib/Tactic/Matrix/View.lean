@@ -42,7 +42,7 @@ def ListMatrixLit.ofArray {u : Level} {α : Q(Type u)} (rows : Array (Array Q($�
 inductive MatrixView {u : Level} (α : Q(Type u)) (m n : Q(Type)) where
   /-- The matrix built by `ofLists` from the list-based literal `A`, when `m` is `Fin k` and `n`
   is `Fin l`. -/
-  | literal (zα : Q(Zero $α)) (k l : Nat) (hm : $m =Q Fin $k) (hn : $n =Q Fin $l)
+  | literal (zα : Q(Zero $α)) (k l : Q(Nat)) (hm : $m =Q Fin $k) (hn : $n =Q Fin $l)
       (A : ListMatrixLit α)
   /-- The matrix built by `Matrix.of` from the function `f`. -/
   | functional (f : Q($m → $n → $α))
@@ -67,14 +67,20 @@ functional view of `M` otherwise. With `closed` (the default), only a literal wi
 variables or metavariables gets the literal view. -/
 def MatrixViewOf.parse {u : Level} {α : Q(Type u)} {m n : Q(Type)} (zα : Q(Zero $α))
     (M : Q(Matrix $m $n $α)) (closed : Bool := true) : MetaM (MatrixViewOf M) := do
-  let some (k, l, _, entries) ← matchMatrixLit? M closed
-    | let f : Q($m → $n → $α) := M
-      return ⟨.functional f, q(rfl)⟩
-  -- `matchMatrixLit?` read `k` and `l` off the type `Matrix (Fin k) (Fin l) α` of `M`.
+  let f : Q($m → $n → $α) := M
+  let functional : MatrixViewOf M := ⟨.functional f, q(rfl)⟩
+  let some (_, _, _, entries) ← matchMatrixLit? M closed | return functional
+  let_expr Fin k := m | return functional
+  let_expr Fin l := n | return functional
+  have k : Q(Nat) := k
+  have l : Q(Nat) := l
+  -- The two matches above establish these.
   have hm : $m =Q Fin $k := ⟨⟩
   have hn : $n =Q Fin $l := ⟨⟩
   let A := ListMatrixLit.ofArray entries
-  have : $M =Q ofLists $k $l $(A.lit) := ⟨⟩
-  return ⟨.literal zα k l hm hn A, q(rfl)⟩
+  -- `M` is `ofLists k l A.lit` only up to reduction, so the kernel checks it.
+  have pf : Q($M = ofLists $k $l $(A.lit)) :=
+    mkExpectedPropHint q(Eq.refl $M) q($M = ofLists $k $l $(A.lit))
+  return ⟨.literal zα k l hm hn A, q($pf)⟩
 
 end Mathlib.Tactic.Matrix
