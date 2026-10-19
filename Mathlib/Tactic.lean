@@ -312,6 +312,13 @@ public import Mathlib.Tactic.Positivity
 public import Mathlib.Tactic.Positivity.Basic
 public import Mathlib.Tactic.Positivity.Core
 public import Mathlib.Tactic.Positivity.Finset
+public import Mathlib.Tactic.Primality
+public import Mathlib.Tactic.Primality.Core
+public import Mathlib.Tactic.Primality.Pocklington.Cert
+public import Mathlib.Tactic.Primality.Pocklington.Meta
+public import Mathlib.Tactic.Primality.PowMod
+public import Mathlib.Tactic.Primality.PredMod
+public import Mathlib.Tactic.Primality.SmallPrime
 public import Mathlib.Tactic.ProdAssoc
 public import Mathlib.Tactic.ProxyType
 public import Mathlib.Tactic.Push
