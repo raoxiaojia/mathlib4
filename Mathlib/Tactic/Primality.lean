@@ -5,7 +5,7 @@ Authors: Rao Xiaojia
 -/
 module
 
-public import Mathlib.Tactic.Primality.Cert
+public import Mathlib.Tactic.Primality.Core
 
 /-!
 # `primality`
