@@ -31,8 +31,7 @@ base-3 one. -/
 #guard_msgs in
 example : Nat.Prime 8388607 := by primality
 
-/-! `p - 1 = 2 ^ 10 * 3 * 7 * 13`, whose cofactor `91 = 7 * 13` passes the base-3 Fermat test but
-is below the square of the trial division bound, so trial division does not stop at it. -/
+/-! `p - 1 = 2 ^ 10 * 3 * 7 * 13`, which trial division factors completely. -/
 
 example : Nat.Prime 279553 := by primality
 

@@ -7836,7 +7836,7 @@ public import Mathlib.Tactic.Positivity.Core
 public import Mathlib.Tactic.Positivity.Finset
 public import Mathlib.Tactic.Primality
 public import Mathlib.Tactic.Primality.Cert
-public import Mathlib.Tactic.Primality.Engine
+public import Mathlib.Tactic.Primality.Factorizer
 public import Mathlib.Tactic.ProdAssoc
 public import Mathlib.Tactic.ProxyType
 public import Mathlib.Tactic.Push
