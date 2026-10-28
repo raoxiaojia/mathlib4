@@ -13,38 +13,37 @@ import Mathlib.NumberTheory.LucasPrimality
 /-!
 # Primality certificates from factorisations of `p - 1`
 
-This file proves `Nat.Prime p` for a numeral `p` from a witness `a` and the prime factors of
-`p - 1`, by the Lucas test, and finds such certificates with a factorizer.
+Constructs a proof of `Nat.Prime p` from a primitive root `a` and the prime factors of `p - 1`, by
+the Lucas test, and finds the prime factors with a factorizer.
+
+TODO: add a minimal set of theory required for variants of Pocklington certificate and implement
+a certifier based on that.
 -/
 
 public section
 
 namespace Mathlib.Tactic.Primality
 
-/-- `LucasHelper p a n` says that `a ^ ((p - 1) / q) % p ≠ 1` for every prime factor `q` of
-`n`. -/
-inductive LucasHelper (p a : ℕ) : ℕ → Prop
-  | one : LucasHelper p a 1
-  | cons {m n q e : ℕ} (hq : q.Prime) (hpow : Nat.powMod a ((p - 1) / q) p ≠ 1)
-      (hn : q ^ e * m = n) (h : LucasHelper p a m) : LucasHelper p a n
+/-- `lucasCheck p a fs` checks that `a ^ (p - 1) % p = 1`, that `a ^ ((p - 1) / q) % p ≠ 1` for
+each `(q, e) ∈ fs`, and that the `q ^ e` multiply to `p - 1`. -/
+@[expose] def lucasCheck (p a : ℕ) (fs : List (Nat.Primes × ℕ)) : Bool :=
+  Nat.powMod a (p - 1) p == 1 && fs.all (fun f ↦ Nat.powMod a ((p - 1) / f.1) p != 1) &&
+    (fs.map fun f ↦ (f.1 : ℕ) ^ f.2).prod == p - 1
 
-theorem LucasHelper.powMod_ne_one {p a n : ℕ} (h : LucasHelper p a n) {q : ℕ} (hq : q.Prime)
-    (hqn : q ∣ n) : Nat.powMod a ((p - 1) / q) p ≠ 1 := by
-  induction h with
-  | one => exact absurd hqn hq.not_dvd_one
-  | @cons m n r e hr hpow hn h ih =>
-    obtain hqr | hqm := hq.dvd_mul.mp (hn ▸ hqn)
-    · rwa [(Nat.prime_dvd_prime_iff_eq hq hr).mp (hq.dvd_of_dvd_pow hqr)]
-    · exact ih hqm
-
-theorem LucasHelper.prime {p a : ℕ} (h : LucasHelper p a (p - 1))
-    (ha : Nat.powMod a (p - 1) p = 1) : p.Prime := by
+theorem prime_of_lucasCheck {p a : ℕ} {fs : List (Nat.Primes × ℕ)}
+    (h : lucasCheck p a fs = true) : p.Prime := by
+  simp only [lucasCheck, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, bne_iff_ne] at h
+  obtain ⟨⟨ha, hpow⟩, hprod⟩ := h
   have hp : p ≠ 1 := by
     rintro rfl
     simp [Nat.powMod_def] at ha
-  refine lucas_primality p a ?_ fun q hq hqp h1 ↦ h.powMod_ne_one hq hqp ?_
+  refine lucas_primality p a ?_ fun q hq hqp h1 ↦ ?_
   · rw [← Nat.cast_pow, ← ZMod.natCast_mod, ← Nat.powMod_def, ha, Nat.cast_one]
-  · rw [Nat.powMod_def, ← ZMod.val_natCast, Nat.cast_pow, h1, ZMod.val_one'' hp]
+  · obtain ⟨_, hx, hqf⟩ := hq.prime.dvd_prod_iff.mp (hprod ▸ hqp)
+    obtain ⟨f, hf, rfl⟩ := List.mem_map.mp hx
+    obtain rfl := (Nat.prime_dvd_prime_iff_eq hq f.1.prop).mp (hq.dvd_of_dvd_pow hqf)
+    apply hpow f hf
+    rw [Nat.powMod_def, ← ZMod.val_natCast, Nat.cast_pow, h1, ZMod.val_one'' hp]
 
 end Mathlib.Tactic.Primality
 
@@ -58,98 +57,100 @@ namespace Mathlib.Tactic.Primality
 
 /-- A certificate for the primality of one number, referring to the primes it depends on by
 value. -/
-inductive Cert where
+inductive Cert (p : Nat) where
   /-- `p` is proved prime by `norm_num`'s evaluation of `Nat.minFac p`. -/
-  | minFac (p : Nat)
-  /-- `p` is proved prime from the witness `a` and the prime factors `qs` of `p - 1`. -/
-  | factors (p a : Nat) (qs : Array Nat)
-
-/-- The number that the certificate `c` proves prime. -/
-def Cert.subject (c : Cert) : Nat :=
-  match c with
-  | .minFac p | .factors p _ _ => p
+  | normNum
+  /-- `p` is proved prime from the primitive root `a` and the prime factors `qs` of `p - 1`. -/
+  | lucas (a : Nat) (qs : Array Nat)
 
 /-- Numbers below this bound are proved prime by `norm_num`'s evaluation of `Nat.minFac`. -/
-def minFacBound : Nat := 2 ^ 18
+def normNumBound : Nat := 2 ^ 18
 
-/-- The largest witness tried. -/
-def witnessBound : Nat := 1000
+/-- A primitive root finding function. Given `p` and the prime factors `qs` of `p - 1`, it returns
+either a primitive root mod `p` or a witness that `p` is composite by `a ^ (p - 1) % p ≠ 1`. -/
+abbrev PrimitiveRootFinder := Nat → Array Nat → CoreM (Option Nat)
 
-/-- Decides whether `n` is prime below `minFacBound`, and runs the base-3 Fermat test above it
-(base `2` passes every composite `2 ^ q - 1` with `q` prime). -/
-def isProbablePrime (n : Nat) : Bool :=
-  if n < minFacBound then decide n.Prime else Nat.powMod 3 (n - 1) n == 1
+/-- Tries the candidates `roots` in order, each reduced modulo `p`. -/
+def PrimitiveRootFinder.ofArray (roots : Array Nat) : PrimitiveRootFinder := fun p qs ↦ do
+  for a in roots do
+    let a := a % p
+    if a != 0 && (Nat.powMod a (p - 1) p != 1 ||
+        qs.all fun q ↦ Nat.powMod a ((p - 1) / q) p != 1) then
+      return some a
+  return none
 
-/-- The least `a` in `[2, witnessBound]` with `a ^ (p - 1) % p = 1` and
-`a ^ ((p - 1) / q) % p ≠ 1` for each `q ∈ qs`. -/
-def findWitness? (p : Nat) (qs : Array Nat) : Option Nat :=
-  (2...=witnessBound).iter.find? fun a ↦
-    qs.all (fun q ↦ Nat.powMod a ((p - 1) / q) p != 1) && Nat.powMod a (p - 1) p == 1
+/-- Runs `f₁`, followed by `f₂` if `f₁` finds nothing. -/
+def PrimitiveRootFinder.then (f₁ f₂ : PrimitiveRootFinder) : PrimitiveRootFinder := fun p qs ↦ do
+  if let some a ← f₁ p qs then
+    return some a
+  f₂ p qs
 
-/-- Appends certificates for `p` and for the primes it depends on that `certs` does not cover yet,
-each after the certificates it uses. -/
-partial def findCerts (factorizer : Factorizer) (p : Nat) : StateT (Array Cert) CoreM Unit := do
-  if (← get).any (·.subject == p) then return
-  checkSystem "primality"
-  unless isProbablePrime p do
-    throwError "{p} is not prime"
-  if p < minFacBound then
-    modify (·.push (.minFac p))
-    return
-  let (qs, rest) ← factorizer.decompose (p - 1)
-  let qs ←
-    if rest == 1 then pure qs
-    else if isProbablePrime rest then pure (qs.push rest)
-    else throwError "found no prime factor of {rest}, which divides {p} - 1"
-  let some a := findWitness? p qs |
-    throwError "found no witness for the primality of {p} up to {witnessBound}; \
-      it may not be prime"
-  for q in qs do
-    findCerts factorizer q
-  modify (·.push (.factors p a qs))
+/-- Simple trial that finds primitive roots up to `bound`. -/
+def trialRoots (bound : Nat) : PrimitiveRootFinder :=
+  .ofArray (Array.range' 2 (bound - 2))
 
-/-- Proves `Nat.Prime pQ` for the raw literal `pQ` by `norm_num`'s `Nat.Prime` extension. -/
-def certifyMinFac (pQ : Q(Nat)) : MetaM Q(Nat.Prime $pQ) := do
-  let ⟨true, pf⟩ ← deriveBool q(Nat.Prime $pQ) | failure
+/-- Proves `Nat.Prime pQ` for the raw literal `pQ` by `norm_num`'s `Nat.Prime` extension, and
+throws an error when `pQ` is not prime. -/
+def certifyNormNum (pQ : Q(Nat)) : MetaM Q(Nat.Prime $pQ) := do
+  let ⟨true, pf⟩ ← deriveBool q(Nat.Prime $pQ) | throwError "{pQ} is not prime"
   return pf
 
-/-- Proves `LucasHelper p a n` for the product `n` of the powers of `qs` in `p - 1`, given the
-proofs that each `q ∈ qs` is prime. -/
-def certifyLucasHelper (proofs : Std.HashMap Nat ((qQ : Q(Nat)) × Q(Nat.Prime $qQ))) (p : Nat)
-    (pQ aQ : Q(Nat)) (qs : Array Nat) :
-    MetaM (Nat × (nQ : Q(Nat)) × Q(LucasHelper $pQ $aQ $nQ)) :=
-  qs.foldrM (init := (⟨1, q(1), q(.one)⟩ : Nat × (nQ : Q(Nat)) × Q(LucasHelper $pQ $aQ $nQ)))
-    fun (q : Nat) ⟨m, mQ, h⟩ ↦ do
-      let some ⟨qQ, hq⟩ := proofs[q]? | failure
-      let e := (Nat.maxPowDvdDiv q (p - 1)).1
-      let n := q ^ e * m
-      have eQ : Q(Nat) := mkRawNatLit e
-      have nQ : Q(Nat) := mkRawNatLit n
-      have hd : Q(Nat.beq (Nat.powMod $aQ (($pQ - 1) / $qQ) $pQ) 1 = false) :=
-        (q(Eq.refl false) : Expr)
-      have hn : Q($qQ ^ $eQ * $mQ = $nQ) := (q(Eq.refl $nQ) : Expr)
-      return ⟨n, nQ, q(LucasHelper.cons $hq (Nat.ne_of_beq_eq_false $hd) $hn $h)⟩
+/-- What `provePrime` reads. -/
+structure Context where
+  /-- Finds the prime factors of `p - 1`. -/
+  factorizer : Factorizer
+  /-- Finds a primitive root of `p` from the prime factors of `p - 1`. -/
+  rootFinder : PrimitiveRootFinder
 
-/-- Proves `Nat.Prime p` for the raw literal `p` from the witness `a` and the prime factors `qs` of
-`p - 1`, given the proofs that each `q ∈ qs` is prime. -/
-def certifyFactors (proofs : Std.HashMap Nat ((qQ : Q(Nat)) × Q(Nat.Prime $qQ))) (p a : Nat)
-    (pQ : Q(Nat)) (qs : Array Nat) : MetaM Q(Nat.Prime $pQ) := do
-  have aQ : Q(Nat) := mkRawNatLit a
-  let ⟨n, nQ, h⟩ ← certifyLucasHelper proofs p pQ aQ qs
-  unless n == p - 1 do
-    throwError "the factors {qs} do not make up {p} - 1"
-  have : $nQ =Q $pQ - 1 := ⟨⟩
-  have ha : Q(Nat.powMod $aQ ($pQ - 1) $pQ = 1) := (q(Eq.refl 1) : Expr)
-  return q(LucasHelper.prime $h $ha)
+/-- The outcome of `provePrime` for one number: its proof of primality, or the numbers whose
+primality blocked it, each with whether it was shown not to be prime. -/
+abbrev PrimalityResult := Except (Array (Nat × Bool)) Q(Nat.Primes)
 
-/-- Proves the certificates `certs` in order, returning each proof under the number it proves
-prime. -/
-def certify (certs : Array Cert) : MetaM (Std.HashMap Nat ((pQ : Q(Nat)) × Q(Nat.Prime $pQ))) :=
-  certs.foldlM (init := {}) fun proofs c ↦ do
-    have pQ : Q(Nat) := mkRawNatLit c.subject
-    let pf : Q(Nat.Prime $pQ) ← match c with
-      | .minFac _ => certifyMinFac pQ
-      | .factors p a qs => certifyFactors proofs p a pQ qs
-    return proofs.insert c.subject ⟨pQ, pf⟩
+/-- The monad of `provePrime`. It reads the `Context`, and its state holds, for each number tried,
+its proof of primality or the numbers whose primality blocked it. -/
+abbrev PrimalityM := ReaderT Context <| StateT (Std.HashMap Nat PrimalityResult) MetaM
+
+/-- Proves `Nat.Prime p` for the raw literal `p` from the primitive root `a` and the prime factors
+`qs` of `p - 1`, whose proofs of primality are in the state. -/
+def certifyLucas (p a : Nat) (pQ : Q(Nat)) (qs : Array Nat) : PrimalityM Q(Nat.Prime $pQ) := do
+  let factors ← qs.toList.mapM fun (q : Nat) ↦ do
+    let some (.ok qQ) := (← get)[q]? | throwError "{q} has no proof of primality"
+    have expQ : Q(Nat) := mkRawNatLit (Nat.maxPowDvdDiv q (p - 1)).1
+    return q(($qQ, $expQ))
+  let factorization : Q(List (Nat.Primes × Nat)) := mkListLitQ factors
+  have hcheck : Q(lucasCheck $pQ $a $factorization = true) := (q(Eq.refl true) : Expr)
+  return q(prime_of_lucasCheck $hcheck)
+
+/-- Proves `Nat.Prime pQ` for the raw literal `pQ` of `p`, or returns the numbers whose primality
+it could not decide, each with whether it was shown not to be prime. A part of `p - 1` that the
+factorizer leaves is taken to be prime and proved in turn. It reuses the results in the state and
+records the ones it computes. -/
+partial def provePrime (p : Nat) : PrimalityM PrimalityResult := do
+  if let some result := (← get)[p]? then
+    return result
+  -- The parenthesised block keeps each `return` inside it, so every outcome is recorded below.
+  let result ← (do
+    checkSystem "primality"
+    have pQ : Q(Nat) := mkRawNatLit p
+    let cert : Cert p ← if p < normNumBound then pure .normNum else
+      let ctx ← read
+      let (qs, rest) ← ctx.factorizer.decompose (p - 1)
+      let qs := if rest == 1 then qs else qs.push rest
+      let some a ← ctx.rootFinder p qs | return .error #[(p, false)]
+      if Nat.powMod a (p - 1) p != 1 then
+        return .error #[(p, true)]
+      pure (.lucas a qs)
+    match cert with
+    | .normNum => return .ok q(⟨$pQ, $(← certifyNormNum pQ)⟩)
+    | .lucas a qs =>
+      let mut undecided := #[]
+      for q in qs do
+        if let .error ns ← provePrime q then
+          undecided := undecided ++ ns
+      unless undecided.isEmpty do
+        return .error undecided
+      return .ok q(⟨$pQ, $(← certifyLucas p a pQ qs)⟩) : PrimalityM PrimalityResult)
+  modify (·.insert p result)
+  return result
 
 end Mathlib.Tactic.Primality

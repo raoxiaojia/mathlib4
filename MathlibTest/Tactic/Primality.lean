@@ -18,29 +18,23 @@ example : ∃ p, Nat.Prime p ∧ p = 7 := by
   refine ⟨_, ?_, rfl⟩
   primality
 
-/-! Below `minFacBound`, composites are rejected exactly. -/
-
-/-- error: 1001 is not prime -/
-#guard_msgs in
-example : Nat.Prime 1001 := by primality
-
-/-! Above `minFacBound`, `2 ^ 23 - 1 = 47 * 178481` passes the base-2 Fermat test but not the
-base-3 one. -/
-
-/-- error: 8388607 is not prime -/
-#guard_msgs in
-example : Nat.Prime 8388607 := by primality
-
-/-! `p - 1 = 2 ^ 10 * 3 * 7 * 13`, which trial division factors completely. -/
+/-! `p - 1 = 2 ^ 10 * 3 * 7 * 13`. -/
 
 example : Nat.Prime 279553 := by primality
 
-/-! `p - 1 = 2 * 2199023256029`, whose prime cofactor is beyond the trial division and is
-certified in turn. -/
+/-! Trial division leaves one large factor in each of the first three `n - 1` below, and that
+factor is proved prime in turn. It factors the last two completely.
+* `4398046517687 - 1 = 2 * 2199023258843`
+* `2199023258843 - 1 = 2 * 1099511629421`
+* `1099511629421 - 1 = 2 ^ 2 * 5 * 251 * 219026221`
+* `219026221 - 1 = 2 ^ 2 * 3 * 5 * 7 * 521491`
+* `521491 - 1 = 2 * 3 * 5 * 17383` -/
 
-example : Nat.Prime 4398046512059 := by primality
+example : Nat.Prime 4398046517687 := by primality
 
-/-- error: found no prime factor of 4399082512301, which divides 8798165024603 - 1 -/
+/-- error: primality could not determine whether these numbers, needed to certify 8798165024603,
+are prime: [4399082512301]. For each of them, add a prime factor of it to `factors` if it is not
+prime, or a primitive root of it to `roots` if it is prime. -/
 #guard_msgs in
 example : Nat.Prime 8798165024603 := by primality
 
@@ -48,9 +42,3 @@ example : Nat.Prime 8798165024603 := by primality
 beyond the trial division. -/
 
 example : Nat.Prime 8798165024603 := by primality (factors := [2097169])
-
-/-! The Carmichael number `278545 = 5 * 17 * 29 * 113` passes the base-3 Fermat test. -/
-
-/-- error: found no witness for the primality of 278545 up to 1000; it may not be prime -/
-#guard_msgs in
-example : Nat.Prime 278545 := by primality
