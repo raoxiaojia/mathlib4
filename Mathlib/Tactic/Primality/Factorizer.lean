@@ -104,4 +104,18 @@ partial def pollardRho (steps : Nat) : Factorizer := fun n ↦ do
 
 end PollardRho
 
+/-- Options for factorizing `p - 1`. -/
+structure FactorizerConfig where
+  /-- Candidate prime factors, tried before trial division on `p - 1` and on `q - 1` for each prime
+  `q` proved on the way. They must be prime. -/
+  factors : List Nat := []
+  /-- The number of steps of Pollard's rho method for each constant it tries. The default finds
+  prime factors below `10 ^ 8`. -/
+  rhoSteps : Nat := 2 ^ 15
+
+/-- Tries `hints` and `factors`, then trial division up to `1024`, then Pollard's rho method. -/
+def FactorizerConfig.toFactorizer (cfg : FactorizerConfig) (hints : Array Nat) : Factorizer :=
+  Factorizer.then (.ofArray (hints ++ cfg.factors.toArray)) <|
+    (trialDivision 1024).then (pollardRho cfg.rhoSteps)
+
 end Mathlib.Tactic.Primality

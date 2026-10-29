@@ -8,6 +8,7 @@ module
 public meta import Mathlib.Data.Nat.MaxPowDiv
 public meta import Mathlib.Util.Qq
 public import Mathlib.Data.Nat.Prime.Defs
+public import Mathlib.Tactic.Primality.Factorizer
 
 import Mathlib.NumberTheory.LucasPrimality
 
@@ -87,6 +88,19 @@ def PrimitiveRootFinder.then (f₁ f₂ : PrimitiveRootFinder) : PrimitiveRootFi
 /-- Tries `2, …, bound - 1` as primitive roots. -/
 def trialRoots (bound : Nat) : PrimitiveRootFinder :=
   .ofArray (Array.range' 2 (bound - 2))
+
+/-- Options for Lucas certificates. -/
+structure LucasConfig extends FactorizerConfig where
+  /-- Candidate primitive roots, tried before the search. -/
+  roots : List Nat := []
+  /-- Proofs `h : Nat.Prime q`, used as the proof of `q` and tried as factors. -/
+  proofs : List Nat.Primes := []
+  /-- Primitive roots are tried below this bound. -/
+  primitiveRootBound : Nat := 1024
+
+/-- Tries `roots`, then the numbers below `primitiveRootBound`. -/
+def LucasConfig.toRootFinder (cfg : LucasConfig) : PrimitiveRootFinder :=
+  .then (.ofArray cfg.roots.toArray) (trialRoots cfg.primitiveRootBound)
 
 /-- Proves `Nat.Prime p` for the raw literal `pQ` of `p` from the primitive root `a` and the prime
 factors of `p - 1` in `factors`, each with its proof of primality. -/
