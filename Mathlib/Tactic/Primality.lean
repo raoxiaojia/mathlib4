@@ -20,12 +20,6 @@ open Lean Meta Elab Tactic Qq Mathlib.Meta.NormNum
 
 namespace Mathlib.Tactic.Primality
 
-/-- The bound of the trial division that factors `p - 1`. -/
-def trialDivisionBound : Nat := 1024
-
-/-- Primitive roots are tried below this bound. -/
-def primitiveRootBound : Nat := 1000
-
 /-- Options for Lucas certificates. -/
 structure LucasConfig where
   /-- Candidate prime factors, tried before trial division. -/
@@ -34,14 +28,22 @@ structure LucasConfig where
   roots : List Nat := []
   /-- Proofs `h : Nat.Prime q`, used as the proof of `q` and tried as factors. -/
   proofs : List Nat.Primes := []
+  /-- The bound of the trial division that factors `p - 1`. -/
+  trialDivisionBound : Nat := 1024
+  /-- Primitive roots are tried below this bound. -/
+  primitiveRootBound : Nat := 1024
 
 /-- The certificate family with its options. -/
 inductive CertConfig where
   /-- Lucas certificates. -/
   | lucas (cfg : LucasConfig := {})
 
+namespace CertConfig
+
 /-- Lets a proof of `Nat.Prime p` stand for an element of `Nat.Primes` in `LucasConfig.proofs`. -/
 scoped instance {p : Nat} (h : Nat.Prime p) : CoeDep (Nat.Prime p) h Nat.Primes := ⟨⟨p, h⟩⟩
+
+end CertConfig
 
 /-- Configuration for `primality`. -/
 structure Config where
@@ -56,7 +58,7 @@ declare_config_elab elabPrimalityConfig Config where
 `IsNat e nQ`. -/
 def evalNumeral (e : Q(Nat)) : MetaM (Nat × (nQ : Q(Nat)) × Q(IsNat $e $nQ)) := do
   let ⟨nQ, pn⟩ ← try deriveNat e q(Nat.instAddMonoidWithOne) catch _ =>
-    throwError "{e} does not evaluate to a numeral"
+    throwError "{e} does not evaluate to a numeral; try simplifying it first"
   let .lit (.natVal n) := nQ | failure
   return ⟨n, nQ, pn⟩
 
@@ -71,12 +73,12 @@ open Lean.Elab.ConfigEval.EvalExpr in
 stands for an element of `Nat.Primes`. Returns the context of `provePrime` built from the options,
 and the proofs of primality they supply. -/
 def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat PrimalityResult) := do
-  let cert ← `(open scoped Mathlib.Tactic.Primality in $cert)
+  let cert ← `(open scoped Mathlib.Tactic.Primality.CertConfig in $cert)
   let e ← Term.withSynthesize <| Term.elabTermEnsuringType cert (mkConst ``CertConfig)
   let_expr CertConfig.lucas e := ← instantiateMVars e |
     throwError "{e} is not of the form `.lucas \{ … }`"
-  let_expr LucasConfig.mk factors roots proofs := e |
-    throwError "{e} is not of the form `\{ factors := …, roots := …, proofs := … }`"
+  let_expr LucasConfig.mk factors roots proofs trialDivisionBound primitiveRootBound := e |
+    throwError "{e} is not of the form `\{ … }`"
   let mut proved : Std.HashMap Nat PrimalityResult := {}
   for p in ← evalListExpr pure proofs do
     let_expr Subtype.mk _ _ n h := p | throwError "{p} is not a proof of `Nat.Prime n`"
@@ -85,9 +87,9 @@ def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat Primali
   let factors ← evalListExpr evalNatExpr factors
   let roots ← evalListExpr evalNatExpr roots
   let factorizer := Factorizer.then (.ofArray (proved.keysArray ++ factors.toArray))
-    (trialDivision trialDivisionBound)
-  let rootFinder :=
-    PrimitiveRootFinder.then (.ofArray roots.toArray) (trialRoots primitiveRootBound)
+    (trialDivision (← evalNatExpr trialDivisionBound))
+  let rootFinder := PrimitiveRootFinder.then (.ofArray roots.toArray)
+    (trialRoots (← evalNatExpr primitiveRootBound))
   return ({ factorizer, rootFinder }, proved)
 
 /-- `primality` tries to prove a goal `Nat.Prime n` from the hint provided by the user.
@@ -115,8 +117,8 @@ elab_rules : tactic
         g.assign q(isNat.natElim (p := Nat.Prime) $pn ($pQ).2)
       | .error ns =>
         if ns.contains p then
-          throwError "primality could not find a primitive root of {p}; add explicit roots to \
-            `.lucas \{ roots := … }`."
+          throwError "primality cannot prove that {p} is prime: unable to find a primitive root; \
+            primitive roots can be explicitly provided at `.lucas \{ roots := … }`."
         throwError "primality could not find factors for these intermediate values: \
           {ns.toList.eraseDups}; factors can be explicitly provided at \
           `.lucas \{ factors := … }`. In the rare case that any of the values is prime, add \

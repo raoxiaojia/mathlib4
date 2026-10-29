@@ -25,9 +25,8 @@ open Lean Meta Qq Mathlib.Meta.NormNum
 
 namespace Mathlib.Tactic.Primality
 
-/-- A certificate for the primality of one number, referring to the primes it depends on by
-value. -/
-inductive Cert (p : Nat) where
+/-- A primality certificate. -/
+inductive Cert where
   /-- `p` is proved prime by `norm_num`'s evaluation of `Nat.minFac p`. -/
   | normNum
   /-- `p` is proved prime from the primitive root `a` and the prime factors `qs` of `p - 1`. -/
@@ -61,7 +60,7 @@ partial def provePrime (p : Nat) : PrimalityM PrimalityResult := do
   let result ← (do
     checkSystem "primality"
     have pQ : Q(Nat) := mkRawNatLit p
-    let cert : Cert p ← if p < normNumBound then pure .normNum else
+    let cert : Cert ← if p < normNumBound then pure .normNum else
       let ctx ← read
       let (qs, rest) ← ctx.factorizer.decompose (p - 1)
       let qs := if rest == 1 then qs else qs.push rest

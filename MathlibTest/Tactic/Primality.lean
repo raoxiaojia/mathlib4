@@ -55,11 +55,11 @@ example : Nat.Prime (73 ! + 1) := by simp [Nat.factorial]; primality
 
 /-! ## Errors -/
 
-/-- error: n does not evaluate to a numeral -/
+/-- error: n does not evaluate to a numeral; try simplifying it first -/
 #guard_msgs in
 example (n : ℕ) : Nat.Prime n := by primality
 
-/-- error: primality could not find a primitive root of 1000; add explicit roots to
-`.lucas { roots := … }`. -/
+/-- error: primality cannot prove that 1000 is prime: unable to find a primitive root; primitive
+roots can be explicitly provided at `.lucas { roots := … }`. -/
 #guard_msgs in
 example : Nat.Prime 1000 := by primality
