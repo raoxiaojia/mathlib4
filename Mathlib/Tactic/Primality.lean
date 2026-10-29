@@ -28,8 +28,9 @@ structure LucasConfig where
   roots : List Nat := []
   /-- Proofs `h : Nat.Prime q`, used as the proof of `q` and tried as factors. -/
   proofs : List Nat.Primes := []
-  /-- The bound of the trial division that factors `p - 1`. -/
-  trialDivisionBound : Nat := 1024
+  /-- The number of steps of Pollard's rho method for each constant it tries. The default finds
+  prime factors below `10 ^ 8`. -/
+  rhoSteps : Nat := 2 ^ 15
   /-- Primitive roots are tried below this bound. -/
   primitiveRootBound : Nat := 1024
 
@@ -69,7 +70,7 @@ def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat Primali
   let e ← Term.withSynthesize <| Term.elabTermEnsuringType cert (mkConst ``CertConfig)
   let_expr CertConfig.lucas e := ← instantiateMVars e |
     throwError "{e} is not of the form `.lucas \{ … }`"
-  let_expr LucasConfig.mk factors roots proofs trialDivisionBound primitiveRootBound := e |
+  let_expr LucasConfig.mk factors roots proofs rhoSteps primitiveRootBound := e |
     throwError "{e} is not of the form `\{ … }`"
   let mut proved : Std.HashMap Nat PrimalityResult := {}
   for p in ← evalListExpr pure proofs do
@@ -81,8 +82,8 @@ def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat Primali
       .ok q(⟨$qQ, isNat.natElim (p := fun m ↦ Nat.Prime m → Nat.Prime $qQ) $pq id $h⟩)
   let factors ← evalListExpr evalNatExpr factors
   let roots ← evalListExpr evalNatExpr roots
-  let factorizer := Factorizer.then (.ofArray (proved.keysArray ++ factors.toArray))
-    (trialDivision (← evalNatExpr trialDivisionBound))
+  let factorizer := Factorizer.then (.ofArray (proved.keysArray ++ factors.toArray)) <|
+    (trialDivision 1024).then (pollardRho (← evalNatExpr rhoSteps))
   let rootFinder := PrimitiveRootFinder.then (.ofArray roots.toArray)
     (trialRoots (← evalNatExpr primitiveRootBound))
   return ({ factorizer, rootFinder }, proved)
@@ -110,10 +111,10 @@ elab_rules : tactic
         g.assign q(isNat.natElim (p := Nat.Prime) $pn ($hp).2)
       | .error ns =>
         if ns.contains p then
-          throwError "primality cannot prove that {p} is prime: unable to find a primitive root; \
-            primitive roots can be explicitly provided at `.lucas \{ roots := … }`."
+          throwError "primality is unable to find a primitive root for {p}; \
+            primitive roots can be provided at `.lucas \{ roots := … }` if {p} is prime."
         throwError "primality could not find factors for these intermediate values: \
-          {ns.toList.eraseDups}; factors can be explicitly provided at \
+          {ns.toList.eraseDups}; factors can be provided at \
           `.lucas \{ factors := … }`. In the rare case that any of the values is prime, add \
           primitive roots of them to `.lucas \{ roots := … }`."
 
