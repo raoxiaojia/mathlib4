@@ -16,9 +16,14 @@ primality certificates, with witnesses it finds itself or takes from hints.
 
 public meta section
 
-open Lean Meta Elab Tactic Qq Mathlib.Meta.NormNum
+open Lean Meta Elab Tactic Qq Mathlib.Meta.NormNum Lean.Elab.ConfigEval
 
 namespace Mathlib.Tactic.Primality
+
+/-- Options for Lucas certificates. -/
+structure LucasConfig extends FactorizerConfig, PrimitiveRootFinderConfig where
+  /-- Proofs `h : Nat.Prime q`, used as the proof of `q` and tried as factors. -/
+  proofs : List Nat.Primes := []
 
 /-- The certificate family with its options. -/
 inductive CertConfig where
@@ -48,6 +53,9 @@ def evalNumeral (e : Q(Nat)) : MetaM (Nat × (nQ : Q(Nat)) × Q(IsNat $e $nQ)) :
   let .lit (.natVal n) := nQ | failure
   return ⟨n, nQ, pn⟩
 
+private local ensure_eval_expr_instance FactorizerConfig
+private local ensure_eval_expr_instance PrimitiveRootFinderConfig
+
 open Lean.Elab.ConfigEval.EvalExpr in
 /-- Elaborates `cert` against `CertConfig` in the goal's context. Returns the context of
 `provePrime` built from the options, and the proofs of primality they supply. -/
@@ -56,9 +64,7 @@ def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat Primali
   let e ← Term.withSynthesize <| Term.elabTermEnsuringType cert (mkConst ``CertConfig)
   let_expr CertConfig.lucas e := ← instantiateMVars e |
     throwError "{e} is not of the form `.lucas \{ … }`"
-  let_expr LucasConfig.mk e roots proofs primitiveRootBound := e |
-    throwError "{e} is not of the form `\{ … }`"
-  let_expr FactorizerConfig.mk factors rhoSteps := e |
+  let_expr LucasConfig.mk factorizerCfg rootFinderCfg proofs := e |
     throwError "{e} is not of the form `\{ … }`"
   let mut proved : Std.HashMap Nat PrimalityResult := {}
   for p in ← evalListExpr pure proofs do
@@ -68,12 +74,10 @@ def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat Primali
     let ⟨q, qQ, pq⟩ ← evalNumeral n
     proved := proved.insert q <|
       .ok q(⟨$qQ, isNat.natElim (p := fun m ↦ Nat.Prime m → Nat.Prime $qQ) $pq id $h⟩)
-  let cfg : LucasConfig := {
-    factors := ← evalListExpr evalNatExpr factors, rhoSteps := ← evalNatExpr rhoSteps
-    roots := ← evalListExpr evalNatExpr roots
-    primitiveRootBound := ← evalNatExpr primitiveRootBound }
-  return ({ factorizer := cfg.toFactorizer proved.keysArray, rootFinder := cfg.toRootFinder },
-    proved)
+  let factorizerCfg : FactorizerConfig ← evalExpr factorizerCfg
+  let rootFinderCfg : PrimitiveRootFinderConfig ← evalExpr rootFinderCfg
+  let factorizer := (Factorizer.ofArray proved.keysArray).then factorizerCfg.toFactorizer
+  return ({ factorizer, rootFinder := rootFinderCfg.toRootFinder }, proved)
 
 /-- `primality` tries to prove a goal `Nat.Prime n`, using the hints provided by the user if any.
 `primality (cert := .lucas { … })` passes hints and options to Lucas certificates, such as prime

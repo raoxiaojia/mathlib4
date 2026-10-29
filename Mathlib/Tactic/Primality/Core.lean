@@ -6,8 +6,8 @@ Authors: Rao Xiaojia
 module
 
 public import Mathlib.Tactic.NormNum.Prime  -- shake: keep (`Nat.Prime` extension for `deriveBool`)
-public import Mathlib.Tactic.Primality.Factorizer
 public import Mathlib.Tactic.Primality.Lucas
+public import Mathlib.Tactic.Primality.Producers
 
 /-!
 # Primality certificates from factorizations of `p - 1`

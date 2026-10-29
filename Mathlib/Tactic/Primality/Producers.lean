@@ -9,10 +9,10 @@ public meta import Mathlib.Data.Nat.MaxPowDiv
 public import Mathlib.Init
 
 /-!
-# Factorizers
+# Producers
 
-This file defines the interface of factorizers, which find prime factors for primality
-certificates, and trial division up to a given bound.
+This file defines the producers of the witnesses of primality certificates. Factorizers find prime
+factors of `p - 1`, and primitive root finders find primitive roots of `p`.
 -/
 
 public meta section
@@ -20,6 +20,8 @@ public meta section
 open Lean
 
 namespace Mathlib.Tactic.Primality
+
+section Factorizer
 
 /-- Returns distinct prime factors of the input, not necessarily all of them. The factorizer must
 ensure that they are prime. It works in `CoreM` to check heartbeats and handle cancellation. -/
@@ -113,9 +115,49 @@ structure FactorizerConfig where
   prime factors below `10 ^ 8`. -/
   rhoSteps : Nat := 2 ^ 15
 
-/-- Tries `hints` and `factors`, then trial division up to `1024`, then Pollard's rho method. -/
-def FactorizerConfig.toFactorizer (cfg : FactorizerConfig) (hints : Array Nat) : Factorizer :=
-  Factorizer.then (.ofArray (hints ++ cfg.factors.toArray)) <|
+/-- Tries `factors`, then trial division up to `1024`, then Pollard's rho method. -/
+def FactorizerConfig.toFactorizer (cfg : FactorizerConfig) : Factorizer :=
+  Factorizer.then (.ofArray cfg.factors.toArray) <|
     (trialDivision 1024).then (pollardRho cfg.rhoSteps)
+
+end Factorizer
+
+section PrimitiveRootFinder
+
+/-- Given the prime factors `qs` of `p - 1`, returns a primitive root of `p` or a Fermat witness. -/
+abbrev PrimitiveRootFinder := Nat → Array Nat → CoreM (Option Nat)
+
+/-- Tries the candidates `roots` in order, each reduced modulo `p`. -/
+def PrimitiveRootFinder.ofArray (roots : Array Nat) : PrimitiveRootFinder := fun p qs ↦ do
+  for a in roots do
+    let a := a % p
+    if a != 0 && (Nat.powMod a (p - 1) p != 1 ||
+        qs.all fun q ↦ Nat.powMod a ((p - 1) / q) p != 1) then
+      return some a
+  return none
+
+/-- Runs `f₁`, followed by `f₂` if `f₁` finds nothing. -/
+def PrimitiveRootFinder.then (f₁ f₂ : PrimitiveRootFinder) : PrimitiveRootFinder := fun p qs ↦ do
+  if let some a ← f₁ p qs then
+    return some a
+  f₂ p qs
+
+/-- Tries `2, …, bound - 1` as primitive roots. -/
+def trialRoots (bound : Nat) : PrimitiveRootFinder :=
+  .ofArray (Array.range' 2 (bound - 2))
+
+/-- Options for finding primitive roots. -/
+structure PrimitiveRootFinderConfig where
+  /-- Candidate primitive roots, tried before the search. -/
+  roots : List Nat := []
+  /-- Primitive roots are tried below this bound. -/
+  primitiveRootBound : Nat := 1024
+
+/-- Tries `roots`, then the numbers below `primitiveRootBound`. -/
+def PrimitiveRootFinderConfig.toRootFinder (cfg : PrimitiveRootFinderConfig) :
+    PrimitiveRootFinder :=
+  .then (.ofArray cfg.roots.toArray) (trialRoots cfg.primitiveRootBound)
+
+end PrimitiveRootFinder
 
 end Mathlib.Tactic.Primality
