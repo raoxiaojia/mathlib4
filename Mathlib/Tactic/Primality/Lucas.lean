@@ -14,8 +14,7 @@ import Mathlib.NumberTheory.LucasPrimality
 /-!
 # Lucas primality certificates
 
-Constructs a proof of `Nat.Prime p` from a primitive root `a` and the certified prime factors of
-`p - 1` by the Lucas test.
+Proves `Nat.Prime p` by the Lucas test from a primitive root and certified prime factors of `p - 1`.
 -/
 
 public section
@@ -67,8 +66,7 @@ open Lean Qq
 
 namespace Mathlib.Tactic.Primality
 
-/-- A primitive root finding function. Given `p` and the prime factors `qs` of `p - 1`, it returns
-either a primitive root mod `p` or a witness that `p` is composite by `a ^ (p - 1) % p ≠ 1`. -/
+/-- Given the prime factors `qs` of `p - 1`, returns a primitive root of `p` or a Fermat witness. -/
 abbrev PrimitiveRootFinder := Nat → Array Nat → CoreM (Option Nat)
 
 /-- Tries the candidates `roots` in order, each reduced modulo `p`. -/
@@ -86,7 +84,7 @@ def PrimitiveRootFinder.then (f₁ f₂ : PrimitiveRootFinder) : PrimitiveRootFi
     return some a
   f₂ p qs
 
-/-- Simple trial that finds primitive roots up to `bound`. -/
+/-- Tries `2, …, bound - 1` as primitive roots. -/
 def trialRoots (bound : Nat) : PrimitiveRootFinder :=
   .ofArray (Array.range' 2 (bound - 2))
 
@@ -94,9 +92,9 @@ def trialRoots (bound : Nat) : PrimitiveRootFinder :=
 factors of `p - 1` in `factors`, each with its proof of primality. -/
 def certifyLucas (p a : Nat) (pQ : Q(Nat)) (factors : Array (Nat × Q(Nat.Primes))) :
     Q(Nat.Prime $pQ) :=
-  let factorization : Q(List (Nat.Primes × Nat)) := mkListLitQ <| factors.toList.map fun (q, qQ) ↦
+  let factorization : Q(List (Nat.Primes × Nat)) := mkListLitQ <| factors.toList.map fun (q, hq) ↦
     have expQ : Q(Nat) := mkRawNatLit (Nat.maxPowDvdDiv q (p - 1)).1
-    q(($qQ, $expQ))
+    q(($hq, $expQ))
   -- The kernel evaluates `Nat` arithmetic on terms with free variables (such as a hypothesis
   -- proving one of the factors prime) only inside `eagerReduce`.
   have hcheck : Q(lucasCheck $pQ $a $factorization = true) := eagerReflBoolTrue

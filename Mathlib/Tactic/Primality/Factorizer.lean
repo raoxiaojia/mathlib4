@@ -11,8 +11,8 @@ public import Mathlib.Init
 /-!
 # Factorizers
 
-This file defines the interface of the factorizers that find prime factors for primality
-certificates, and a default factorizer by trial division up to a given bound.
+This file defines the interface of factorizers, which find prime factors for primality
+certificates, and trial division up to a given bound.
 -/
 
 public meta section
@@ -21,26 +21,17 @@ open Lean
 
 namespace Mathlib.Tactic.Primality
 
-/-- Returns an array of distinct prime factors of the input that the factorizer can find. This does
-not have to be complete (e.g. the factorizer can return an empty array for numbers that are too
-difficult to factor). It is the factorizer's obligation to ensure that all values it returned are
-indeed prime.
-
-Works in `CoreM` so the factorizer can check for heartbeats consumed and handle
-cancellation. -/
+/-- Returns distinct prime factors of the input, not necessarily all of them. The factorizer must
+ensure that they are prime. It works in `CoreM` to check heartbeats and handle cancellation. -/
 abbrev Factorizer := Nat → CoreM (Array Nat)
 
-/-- Divides out of `n` every prime factor that the factorizer finds, and returns the prime factors
-found and the remaining factor. -/
+/-- Returns the prime factors of `n` that `f` finds, and `n` with all of them divided out. -/
 def Factorizer.decompose (f : Factorizer) (n : Nat) : CoreM (Array Nat × Nat) := do
   let ps ← f n
-  let mut ret := n
-  for p in ps do
-    ret := ret.divMaxPow p
-  return (ps, ret)
+  return (ps, ps.foldl Nat.divMaxPow n)
 
-/-- Assembles a factorizer based on an array of prime candidates based on trial division. This is
-for handling candidate prime factors that user provides in the certificate witness. -/
+/-- Returns the candidates in `ps` that divide its input. They are assumed prime, and each is
+divided out completely, so a repeated candidate is returned once. -/
 def Factorizer.ofArray (ps : Array Nat) : Factorizer := fun n ↦
   pure (ps.foldl (init := (#[], n)) fun (found, rest) p ↦
     if 1 < p && rest % p == 0 then (found.push p, rest.divMaxPow p) else (found, rest)).1
@@ -50,7 +41,8 @@ def Factorizer.then (f₁ f₂ : Factorizer) : Factorizer := fun n ↦ do
   let (ps, rest) ← f₁.decompose n
   return ps ++ (← f₂ rest)
 
-/-- Trial division by `2` and the odd numbers up to `bound` and returns all prime factors found. -/
+/-- Trial division by `2` and the odd numbers up to `bound`. A remaining factor that trial division
+shows to be prime is returned as well. -/
 def trialDivision (bound : Nat) : Factorizer := fun n ↦ do
   let mut n := n
   let mut ps := #[]

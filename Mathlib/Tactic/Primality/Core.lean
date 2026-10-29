@@ -10,13 +10,12 @@ public import Mathlib.Tactic.Primality.Factorizer
 public import Mathlib.Tactic.Primality.Lucas
 
 /-!
-# Primality certificates from factorisations of `p - 1`
+# Primality certificates from factorizations of `p - 1`
 
 Proves `Nat.Prime p` by a tree of certificates, one for `p` and one for each prime factor of
 `p - 1` that it uses, and finds the prime factors with a factorizer.
 
-TODO: add a minimal set of theory required for variants of Pocklington certificate and implement
-a certifier based on that.
+TODO: add variants of Pocklington certificates, with the minimal theory they need.
 -/
 
 public meta section
@@ -42,22 +41,17 @@ structure Context where
   /-- Finds a primitive root of `p` from the prime factors of `p - 1`. -/
   rootFinder : PrimitiveRootFinder
 
-/-- The outcome of `provePrime` for one number: its proof of primality, or the numbers whose
-primality blocked it. -/
+/-- The proof of primality of a number, or the numbers whose primality blocked it. -/
 abbrev PrimalityResult := Except (Array Nat) Q(Nat.Primes)
 
-/-- The monad of `provePrime`. It reads the `Context`, and its state holds, for each number tried,
-its proof of primality or the numbers whose primality blocked it. -/
-abbrev PrimalityM := ReaderT Context <| StateT (Std.HashMap Nat PrimalityResult) MetaM
+/-- The monad of `provePrime`, whose state holds the result for each number tried. -/
+abbrev PrimalityM := ReaderT Context <| MonadStateCacheT Nat PrimalityResult MetaM
 
-/-- Proves `Nat.Prime pQ` for the raw literal `pQ` of `p`, or returns the numbers whose primality
-it could not decide. A part of `p - 1` that the factorizer leaves is taken to be prime and proved
-in turn. It reuses the results in the state and records the ones it computes. -/
-partial def provePrime (p : Nat) : PrimalityM PrimalityResult := do
-  if let some result := (← get)[p]? then
-    return result
-  -- The parenthesised block keeps each `return` inside it, so every outcome is recorded below.
-  let result ← (do
+/-- Proves `p` prime by an element of `Nat.Primes` on the raw literal of `p`, or returns the numbers
+it could not prove prime. The part of `p - 1` that the factorizer leaves is taken to be prime and
+proved in turn. -/
+partial def provePrime (p : Nat) : PrimalityM PrimalityResult :=
+  checkCache p fun _ ↦ do
     checkSystem "primality"
     have pQ : Q(Nat) := mkRawNatLit p
     let cert : Cert ← if p < normNumBound then pure .normNum else
@@ -73,16 +67,9 @@ partial def provePrime (p : Nat) : PrimalityM PrimalityResult := do
       let ⟨true, pf⟩ ← deriveBool q(Nat.Prime $pQ) | return .error #[p]
       return .ok q(⟨$pQ, $pf⟩)
     | .lucas a qs =>
-      let mut factors := #[]
-      let mut undecided := #[]
-      for q in qs do
-        match ← provePrime q with
-        | .ok qQ => factors := factors.push (q, qQ)
-        | .error ns => undecided := undecided ++ ns
-      unless undecided.isEmpty do
-        return .error undecided
-      return .ok q(⟨$pQ, $(certifyLucas p a pQ factors)⟩) : PrimalityM PrimalityResult)
-  modify (·.insert p result)
-  return result
+      let results ← qs.mapM provePrime
+      let .ok hqs := results.mapM id |
+        return .error (results.flatMap fun | .ok _ => #[] | .error ns => ns)
+      return .ok q(⟨$pQ, $(certifyLucas p a pQ (qs.zip hqs))⟩)
 
 end Mathlib.Tactic.Primality
