@@ -8,6 +8,8 @@ module
 public meta import Mathlib.Data.Nat.MaxPowDiv
 public meta import Mathlib.Util.Qq
 public import Mathlib.Data.Nat.Prime.Defs
+public import Mathlib.Tactic.Primality.Core
+public import Mathlib.Tactic.Primality.Producers
 
 import Mathlib.NumberTheory.LucasPrimality
 
@@ -62,7 +64,7 @@ end
 
 public meta section
 
-open Lean Qq
+open Lean Meta Qq
 
 namespace Mathlib.Tactic.Primality
 
@@ -77,5 +79,25 @@ def certifyLucas (p a : Nat) (pQ : Q(Nat)) (factors : Array (Nat × Q(Nat.Primes
   -- proving one of the factors prime) only inside `eagerReduce`.
   have hcheck : Q(lucasCheck $pQ $a $factorization = true) := eagerReflBoolTrue
   q(prime_of_lucasCheck $hcheck)
+
+/-- Proves `p` prime by a Lucas certificate on the raw literal of `p`, or by `norm_num` below
+`normNumBound`, or returns the numbers it could not prove prime. The part of `p - 1` that the
+factorizer leaves is taken to be prime and proved in turn. The cache holds the result for each
+number tried. -/
+partial def proveByLucas (factorizer : Factorizer) (rootFinder : PrimitiveRootFinder) (p : Nat) :
+    MonadStateCacheT Nat PrimalityResult MetaM PrimalityResult :=
+  checkCache p fun _ ↦ do
+    checkSystem "primality"
+    if p < normNumBound then return ← proveByNormNum p
+    let (qs, rest) ← factorizer.decompose (p - 1)
+    let qs := if rest == 1 then qs else qs.push rest
+    let some a ← rootFinder p qs | return .error #[p]
+    if Nat.powMod a (p - 1) p != 1 then
+      return .error #[p]
+    let results ← qs.mapM (proveByLucas factorizer rootFinder)
+    let .ok hqs := results.mapM id |
+      return .error (results.flatMap fun | .ok _ => #[] | .error ns => ns)
+    have pQ : Q(Nat) := mkRawNatLit p
+    return .ok q(⟨$pQ, $(certifyLucas p a pQ (qs.zip hqs))⟩)
 
 end Mathlib.Tactic.Primality

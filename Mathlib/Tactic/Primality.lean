@@ -5,7 +5,7 @@ Authors: Rao Xiaojia
 -/
 module
 
-public import Mathlib.Tactic.Primality.Core
+public import Mathlib.Tactic.Primality.Lucas
 
 /-!
 # `primality`
@@ -57,9 +57,9 @@ private local ensure_eval_expr_instance FactorizerConfig
 private local ensure_eval_expr_instance PrimitiveRootFinderConfig
 
 open Lean.Elab.ConfigEval.EvalExpr in
-/-- Elaborates `cert` against `CertConfig` in the goal's context. Returns the context of
-`provePrime` built from the options, and the proofs of primality they supply. -/
-def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat PrimalityResult) := do
+/-- Elaborates `cert` against `CertConfig` in the goal's context, and returns the prover of the
+certificate family it selects, set up with the options and proofs it supplies. -/
+def elabCertConfig (cert : Term) : TermElabM (Nat → MetaM PrimalityResult) := do
   let cert ← `(open scoped Mathlib.Tactic.Primality.CertConfig in $cert)
   let e ← Term.withSynthesize <| Term.elabTermEnsuringType cert (mkConst ``CertConfig)
   let_expr CertConfig.lucas e := ← instantiateMVars e |
@@ -77,7 +77,7 @@ def elabCertConfig (cert : Term) : TermElabM (Context × Std.HashMap Nat Primali
   let factorizerCfg : FactorizerConfig ← evalExpr factorizerCfg
   let rootFinderCfg : PrimitiveRootFinderConfig ← evalExpr rootFinderCfg
   let factorizer := (Factorizer.ofArray proved.keysArray).then factorizerCfg.toFactorizer
-  return ({ factorizer, rootFinder := rootFinderCfg.toRootFinder }, proved)
+  return fun p ↦ StateT.run' (proveByLucas factorizer rootFinderCfg.toRootFinder p) proved
 
 /-- `primality` tries to prove a goal `Nat.Prime n`, using the hints provided by the user if any.
 `primality (cert := .lucas { … })` passes hints and options to Lucas certificates, such as prime
@@ -86,13 +86,13 @@ syntax (name := primality) "primality" optConfig : tactic
 
 elab_rules : tactic
   | `(tactic| primality $cfg:optConfig) => withMainContext do
-    let (ctx, proved) ← elabCertConfig <| ← (← elabPrimalityConfig cfg).cert.getDM `(.lucas)
+    let prove ← elabCertConfig <| ← (← elabPrimalityConfig cfg).cert.getDM `(.lucas)
     liftMetaFinishingTactic fun g ↦ do
       let_expr Nat.Prime e := (← instantiateMVars (← g.getType)) |
         throwError "the goal is not of the form `Nat.Prime n`"
       have e : Q(Nat) := e
       let ⟨p, pQ, pn⟩ ← evalNumeral e
-      match ← StateT.run' ((provePrime p).run ctx) proved with
+      match ← prove p with
       | .ok hp =>
         have : $pQ =Q ($hp).1 := ⟨⟩
         g.assign q(isNat.natElim (p := Nat.Prime) $pn ($hp).2)
