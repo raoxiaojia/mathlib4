@@ -5,7 +5,7 @@ Authors: Rao Xiaojia
 -/
 module
 
-public import Mathlib.Tactic.Primality.Lucas
+public import Mathlib.Tactic.Primality.Core
 
 /-!
 # `primality`
@@ -59,25 +59,29 @@ private local ensure_eval_expr_instance PrimitiveRootFinderConfig
 open Lean.Elab.ConfigEval.EvalExpr in
 /-- Elaborates `cert` against `CertConfig` in the goal's context, and returns the prover of the
 certificate family it selects, set up with the options and proofs it supplies. -/
-def elabCertConfig (cert : Term) : TermElabM (Nat → MetaM PrimalityResult) := do
+def elabCertConfig (cert : Term) : TermElabM (Nat → MetaM (Except (Array Nat) Expr)) := do
   let cert ← `(open scoped Mathlib.Tactic.Primality.CertConfig in $cert)
   let e ← Term.withSynthesize <| Term.elabTermEnsuringType cert (mkConst ``CertConfig)
   let_expr CertConfig.lucas e := ← instantiateMVars e |
     throwError "{e} is not of the form `.lucas \{ … }`"
   let_expr LucasConfig.mk factorizerCfg rootFinderCfg proofs := e |
     throwError "{e} is not of the form `\{ … }`"
-  let mut proved : Std.HashMap Nat PrimalityResult := {}
+  let mut known : Std.HashMap Nat Expr := {}
   for p in ← evalListExpr pure proofs do
     let_expr Subtype.mk _ _ n h := p | throwError "{p} is not a proof of `Nat.Prime n`"
     have n : Q(Nat) := n
     have h : Q(Nat.Prime $n) := h
     let ⟨q, qQ, pq⟩ ← evalNumeral n
-    proved := proved.insert q <|
-      .ok q(⟨$qQ, isNat.natElim (p := fun m ↦ Nat.Prime m → Nat.Prime $qQ) $pq id $h⟩)
+    known := known.insert q q(isNat.natElim (p := fun m ↦ Nat.Prime m → Nat.Prime $qQ) $pq id $h)
   let factorizerCfg : FactorizerConfig ← evalExpr factorizerCfg
   let rootFinderCfg : PrimitiveRootFinderConfig ← evalExpr rootFinderCfg
-  let factorizer := (Factorizer.ofArray proved.keysArray).then factorizerCfg.toFactorizer
-  return fun p ↦ StateT.run' (proveByLucas factorizer rootFinderCfg.toRootFinder p) proved
+  let factorizer := (Factorizer.ofArray known.keysArray).then factorizerCfg.toFactorizer
+  return fun p ↦ do
+    let (blocked, witnesses) ← (findLucasCerts factorizer rootFinderCfg.toRootFinder known p).run {}
+    unless blocked.isEmpty do
+      return .error blocked
+    let certs := witnesses.map fun _ w ↦ Cert.lucas w
+    return .ok (← StateT.run' (certifyPrime certs p) known)
 
 /-- `primality` tries to prove a goal `Nat.Prime n`, using the hints provided by the user if any.
 `primality (cert := .lucas { … })` passes hints and options to Lucas certificates, such as prime
@@ -94,8 +98,8 @@ elab_rules : tactic
       let ⟨p, pQ, pn⟩ ← evalNumeral e
       match ← prove p with
       | .ok hp =>
-        have : $pQ =Q ($hp).1 := ⟨⟩
-        g.assign q(isNat.natElim (p := Nat.Prime) $pn ($hp).2)
+        have hp : Q(Nat.Prime $pQ) := hp
+        g.assign q(isNat.natElim (p := Nat.Prime) $pn $hp)
       | .error ns =>
         if ns.contains p then
           throwError "primality is unable to find a primitive root for {p}; \

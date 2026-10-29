@@ -8,7 +8,6 @@ module
 public meta import Mathlib.Data.Nat.MaxPowDiv
 public meta import Mathlib.Util.Qq
 public import Mathlib.Data.Nat.Prime.Defs
-public import Mathlib.Tactic.Primality.Core
 public import Mathlib.Tactic.Primality.Producers
 
 import Mathlib.NumberTheory.LucasPrimality
@@ -64,40 +63,52 @@ end
 
 public meta section
 
-open Lean Meta Qq
+open Lean Qq
 
 namespace Mathlib.Tactic.Primality
 
-/-- Proves `Nat.Prime p` for the raw literal `pQ` of `p` from the primitive root `a` and the prime
-factors of `p - 1` in `factors`, each with its proof of primality. -/
-def certifyLucas (p a : Nat) (pQ : Q(Nat)) (factors : Array (Nat × Q(Nat.Primes))) :
-    Q(Nat.Prime $pQ) :=
-  let factorization : Q(List (Nat.Primes × Nat)) := mkListLitQ <| factors.toList.map fun (q, hq) ↦
+/-- A Lucas certificate for `p`. -/
+structure LucasWitness where
+  /-- A primitive root of `p`. -/
+  a : Nat
+  /-- The prime factors of `p - 1`. -/
+  qs : Array Nat
+
+/-- Numbers below this bound are proved prime by `norm_num`'s evaluation of `Nat.minFac`. -/
+def normNumBound : Nat := 2 ^ 18
+
+/-- Proves `Nat.Prime p` from the primitive root `a` and the prime factors of `p - 1` in `factors`,
+each with its proof of primality. -/
+def certifyLucas (p a : Nat) (factors : Array ((q : Nat) × Q(Nat.Prime $q))) : Q(Nat.Prime $p) :=
+  let factorization : Q(List (Nat.Primes × Nat)) := mkListLitQ <| factors.toList.map fun ⟨q, hq⟩ ↦
     have expQ : Q(Nat) := mkRawNatLit (Nat.maxPowDvdDiv q (p - 1)).1
-    q(($hq, $expQ))
+    q((⟨$q, $hq⟩, $expQ))
   -- The kernel evaluates `Nat` arithmetic on terms with free variables (such as a hypothesis
   -- proving one of the factors prime) only inside `eagerReduce`.
-  have hcheck : Q(lucasCheck $pQ $a $factorization = true) := eagerReflBoolTrue
+  have hcheck : Q(lucasCheck $p $a $factorization = true) := eagerReflBoolTrue
   q(prime_of_lucasCheck $hcheck)
 
-/-- Proves `p` prime by a Lucas certificate on the raw literal of `p`, or by `norm_num` below
-`normNumBound`, or returns the numbers it could not prove prime. The part of `p - 1` that the
-factorizer leaves is taken to be prime and proved in turn. The cache holds the result for each
-number tried. -/
-partial def proveByLucas (factorizer : Factorizer) (rootFinder : PrimitiveRootFinder) (p : Nat) :
-    MonadStateCacheT Nat PrimalityResult MetaM PrimalityResult :=
-  checkCache p fun _ ↦ do
-    checkSystem "primality"
-    if p < normNumBound then return ← proveByNormNum p
-    let (qs, rest) ← factorizer.decompose (p - 1)
-    let qs := if rest == 1 then qs else qs.push rest
-    let some a ← rootFinder p qs | return .error #[p]
-    if Nat.powMod a (p - 1) p != 1 then
-      return .error #[p]
-    let results ← qs.mapM (proveByLucas factorizer rootFinder)
-    let .ok hqs := results.mapM id |
-      return .error (results.flatMap fun | .ok _ => #[] | .error ns => ns)
-    have pQ : Q(Nat) := mkRawNatLit p
-    return .ok q(⟨$pQ, $(certifyLucas p a pQ (qs.zip hqs))⟩)
+/-- Searches for Lucas certificates of `p` and of the primes it depends on, recording them in the
+state, or returns the numbers whose primality blocked the search. Numbers below `normNumBound` are
+left to `norm_num`, and the numbers in `known` need no certificate. The part of `p - 1` that the
+factorizer leaves is taken to be prime and certified in turn. -/
+partial def findLucasCerts (factorizer : Factorizer) (rootFinder : PrimitiveRootFinder)
+    (known : Std.HashMap Nat Expr) (p : Nat) :
+    StateT (Std.HashMap Nat LucasWitness) CoreM (Array Nat) := do
+  if known.contains p || (← get).contains p then return #[]
+  checkSystem "primality"
+  if p < normNumBound then
+    return if isProbablePrime p then #[] else #[p]
+  let (qs, rest) ← factorizer.decompose (p - 1)
+  let qs := if rest == 1 then qs else qs.push rest
+  let some a ← rootFinder p qs | return #[p]
+  if Nat.powMod a (p - 1) p != 1 then
+    return #[p]
+  let mut blocked := #[]
+  for q in qs do
+    blocked := blocked ++ (← findLucasCerts factorizer rootFinder known q)
+  if blocked.isEmpty then
+    modify (·.insert p ⟨a, qs⟩)
+  return blocked
 
 end Mathlib.Tactic.Primality
