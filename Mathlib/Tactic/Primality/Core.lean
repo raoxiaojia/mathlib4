@@ -44,17 +44,16 @@ structure Context where
   rootFinder : PrimitiveRootFinder
 
 /-- The outcome of `provePrime` for one number: its proof of primality, or the numbers whose
-primality blocked it, each with whether it was shown not to be prime. -/
-abbrev PrimalityResult := Except (Array (Nat × Bool)) Q(Nat.Primes)
+primality blocked it. -/
+abbrev PrimalityResult := Except (Array Nat) Q(Nat.Primes)
 
 /-- The monad of `provePrime`. It reads the `Context`, and its state holds, for each number tried,
 its proof of primality or the numbers whose primality blocked it. -/
 abbrev PrimalityM := ReaderT Context <| StateT (Std.HashMap Nat PrimalityResult) MetaM
 
 /-- Proves `Nat.Prime pQ` for the raw literal `pQ` of `p`, or returns the numbers whose primality
-it could not decide, each with whether it was shown not to be prime. A part of `p - 1` that the
-factorizer leaves is taken to be prime and proved in turn. It reuses the results in the state and
-records the ones it computes. -/
+it could not decide. A part of `p - 1` that the factorizer leaves is taken to be prime and proved
+in turn. It reuses the results in the state and records the ones it computes. -/
 partial def provePrime (p : Nat) : PrimalityM PrimalityResult := do
   if let some result := (← get)[p]? then
     return result
@@ -66,13 +65,13 @@ partial def provePrime (p : Nat) : PrimalityM PrimalityResult := do
       let ctx ← read
       let (qs, rest) ← ctx.factorizer.decompose (p - 1)
       let qs := if rest == 1 then qs else qs.push rest
-      let some a ← ctx.rootFinder p qs | return .error #[(p, false)]
+      let some a ← ctx.rootFinder p qs | return .error #[p]
       if Nat.powMod a (p - 1) p != 1 then
-        return .error #[(p, true)]
+        return .error #[p]
       pure (.lucas a qs)
     match cert with
     | .normNum =>
-      let ⟨true, pf⟩ ← deriveBool q(Nat.Prime $pQ) | return .error #[(p, true)]
+      let ⟨true, pf⟩ ← deriveBool q(Nat.Prime $pQ) | return .error #[p]
       return .ok q(⟨$pQ, $pf⟩)
     | .lucas a qs =>
       let mut factors := #[]

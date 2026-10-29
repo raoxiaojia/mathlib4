@@ -32,13 +32,13 @@ factor is proved prime in turn. It factors the last two completely.
 
 example : Nat.Prime 4398046517687 := by primality
 
-/-- error: primality could not determine whether these numbers, needed to certify 8798165024603,
-are prime: [4399082512301]. For each of them, add a prime factor of it to `factors` if it is not
-prime, or a primitive root of it to `roots` if it is prime. -/
+/-- error: primality could not find factors for these intermediate values: [4399082512301]; factors
+can be explicitly provided at `.lucas { factors := … }`. In the rare case that any of the values is
+prime, add primitive roots of them to `.lucas { roots := … }`. -/
 #guard_msgs in
 example : Nat.Prime 8798165024603 := by primality
 
 /-! The hint `2097169` splits `p - 1 = 2 * 2097169 * 2097629`, whose odd prime factors are both
 beyond the trial division. -/
 
-example : Nat.Prime 8798165024603 := by primality (factors := [2097169])
+example : Nat.Prime 8798165024603 := by primality (cert := .lucas { factors := [2097169] })
