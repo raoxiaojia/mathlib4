@@ -70,7 +70,7 @@ namespace Mathlib.Tactic.Primality
 /-- Options for Lucas certificates. -/
 structure LucasConfig extends FactorizerConfig, PrimitiveRootFinderConfig
 
-/-- The witness of a Lucas certificate for `p`. -/
+/-- A candidate witness of a Lucas certificate for `p`. -/
 structure LucasWitness where
   /-- A primitive root of `p`. -/
   root : Nat

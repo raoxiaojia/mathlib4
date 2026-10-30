@@ -43,7 +43,7 @@ example (h : Nat.Prime 4398046517687) : Nat.Prime (2 * 4398046517687 * 100000000
 
 example : Nat.Prime (2 ^ 61 - 1) := by simp; primality
 
--- Only the last 3 factors are required, but 5 are included so the cert checks faster.
+-- Only the last 3 factors are required, but 5 are included so the producer is faster.
 set_option exponentiation.threshold 521 in
 example : Nat.Prime (2 ^ 521 - 1) := by
   simp

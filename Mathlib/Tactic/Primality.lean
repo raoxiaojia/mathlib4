@@ -10,8 +10,8 @@ public import Mathlib.Tactic.Primality.Core
 /-!
 # `primality`
 
-This file defines the `primality` tactic, which closes goals `Nat.Prime n` using a closed set of
-primality certificates, with witnesses it finds itself or takes from hints.
+This file defines the `primality` tactic, which closes goals `Nat.Prime n` using a closed family of
+primality certificates, with witnesses it finds itself or takes from the user.
 -/
 
 public meta section
@@ -22,7 +22,7 @@ namespace Mathlib.Tactic.Primality
 
 /-- Configuration for `primality`. -/
 structure Config where
-  /-- The certificate family with its options. -/
+  /-- The certificate configuration to use. -/
   cert : CertConfig := .lucas {}
 
 /-- Function elaborating `Config`. -/
@@ -35,8 +35,7 @@ def evalNumeral? (e : Q(Nat)) : MetaM (Option (Nat × (nQ : Q(Nat)) × Q(IsNat $
   let .lit (.natVal n) := nQ | return none
   return some ⟨n, nQ, pn⟩
 
-/-- Elaborates the proofs `hs` of `Nat.Prime n` in the goal's context, and returns each proof under
-the value of its `n`. -/
+/-- Store the proofs `hs` of `Nat.Prime n` in to a hashmap. -/
 def elabProofs (hs : Array Term) : TacticM (Std.HashMap Nat Expr) := do
   let mut known : Std.HashMap Nat Expr := {}
   for h in hs do
@@ -51,9 +50,7 @@ def elabProofs (hs : Array Term) : TacticM (Std.HashMap Nat Expr) := do
   return known
 
 /-- `primality` tries to prove a goal `Nat.Prime n`, using the hints provided by the user if any.
-`primality (cert := .lucas { … })` passes hints and options to Lucas certificates, such as prime
-factors of `n - 1` (see `LucasConfig`). `primality [h₁, h₂]` uses the proofs `hᵢ : Nat.Prime qᵢ`
-for the primes `qᵢ` and tries them as factors. -/
+Refer to `MathlibTest.Tactic.Primality` for a gallery of usages. -/
 syntax (name := primality) "primality" optConfig (" [" term,* "]")? : tactic
 
 elab_rules : tactic
@@ -66,7 +63,7 @@ elab_rules : tactic
       have e : Q(Nat) := e
       let some ⟨p, pQ, pn⟩ ← evalNumeral? e |
         throwError "{e} does not evaluate to a numeral; try simplifying it first"
-      let cert ← findCert cfg.cert (.ofArray known.keysArray) p
+      let cert ← findCert cfg.cert known.keysArray p
       let hp : Q(Nat.Prime $pQ) ← StateT.run' (certifyPrime cert) known
       g.assign q(isNat.natElim (p := Nat.Prime) $pn $hp)
 
