@@ -17,14 +17,14 @@ example : Nat.Prime 100000007 := by primality
 
 example : Nat.Prime (10 ^ 9 + 7) := by simp; primality
 
-/-- error: primality could not find factors for these intermediate values:
-[100000000004900000000016761]; factors can be provided at `.lucas { factors := … }`. In the rare
-case that any of the values is prime, add primitive roots of them to `.lucas { roots := … }`. -/
+/-- error: primality could not find factors for the intermediate value 100000000004900000000016761;
+factors can be provided at `.lucas { factors := … }`. In the rare case that it is prime, add a
+primitive root of it to `.lucas { roots := … }`. -/
 #guard_msgs in
 example : Nat.Prime (2 * 10000000000037 * 10000000000453 + 1) := by primality
 
 example : Nat.Prime (2 * 10000000000037 * 10000000000453 + 1) := by
-  simp; primality (cert := .lucas { factors := [10000000000037] })
+  primality (cert := .lucas { factors := [10000000000037] })
 
 example : Nat.Prime (2 * 1000021069 * 100000000000031 + 1) := by
   primality (cert := .lucas { rhoSteps := 2 ^ 16 })
@@ -33,11 +33,11 @@ theorem prime_4398046517687 : Nat.Prime 4398046517687 := by primality
 
 -- Takes an already proven prime as a hint.
 example : Nat.Prime (2 * 4398046517687 * 10000000001437 + 1) := by
-  primality (cert := .lucas { proofs := [prime_4398046517687] })
+  primality [prime_4398046517687]
 
 -- The same with a hypothesis.
 example (h : Nat.Prime 4398046517687) : Nat.Prime (2 * 4398046517687 * 10000000001437 + 1) := by
-  primality (cert := .lucas { proofs := [h] })
+  primality [h]
 
 /-! ## Special primes -/
 

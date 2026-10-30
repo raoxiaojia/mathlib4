@@ -67,48 +67,41 @@ open Lean Qq
 
 namespace Mathlib.Tactic.Primality
 
-/-- A Lucas certificate for `p`. -/
+/-- Options for Lucas certificates. -/
+structure LucasConfig extends FactorizerConfig, PrimitiveRootFinderConfig
+
+/-- The witness of a Lucas certificate for `p`. -/
 structure LucasWitness where
   /-- A primitive root of `p`. -/
-  a : Nat
+  root : Nat
   /-- The prime factors of `p - 1`. -/
-  qs : Array Nat
+  factors : Array Nat
 
-/-- Numbers below this bound are proved prime by `norm_num`'s evaluation of `Nat.minFac`. -/
-def normNumBound : Nat := 2 ^ 18
-
-/-- Proves `Nat.Prime p` from the primitive root `a` and the prime factors of `p - 1` in `factors`,
-each with its proof of primality. -/
-def certifyLucas (p a : Nat) (factors : Array ((q : Nat) × Q(Nat.Prime $q))) : Q(Nat.Prime $p) :=
+/-- Proves `Nat.Prime p` from the primitive root `root` and the prime factors of `p - 1` in
+`factors`, each with its proof of primality. -/
+def certifyLucas (p root : Nat) (factors : Array ((q : Nat) × Q(Nat.Prime $q))) :
+    Q(Nat.Prime $p) :=
   let factorization : Q(List (Nat.Primes × Nat)) := mkListLitQ <| factors.toList.map fun ⟨q, hq⟩ ↦
     have expQ : Q(Nat) := mkRawNatLit (Nat.maxPowDvdDiv q (p - 1)).1
     q((⟨$q, $hq⟩, $expQ))
   -- The kernel evaluates `Nat` arithmetic on terms with free variables (such as a hypothesis
   -- proving one of the factors prime) only inside `eagerReduce`.
-  have hcheck : Q(lucasCheck $p $a $factorization = true) := eagerReflBoolTrue
+  have hcheck : Q(lucasCheck $p $root $factorization = true) := eagerReflBoolTrue
   q(prime_of_lucasCheck $hcheck)
 
-/-- Searches for Lucas certificates of `p` and of the primes it depends on, recording them in the
-state, or returns the numbers whose primality blocked the search. Numbers below `normNumBound` are
-left to `norm_num`, and the numbers in `known` need no certificate. The part of `p - 1` that the
-factorizer leaves is taken to be prime and certified in turn. -/
-partial def findLucasCerts (factorizer : Factorizer) (rootFinder : PrimitiveRootFinder)
-    (known : Std.HashMap Nat Expr) (p : Nat) :
-    StateT (Std.HashMap Nat LucasWitness) CoreM (Array Nat) := do
-  if known.contains p || (← get).contains p then return #[]
-  checkSystem "primality"
-  if p < normNumBound then
-    return if isProbablePrime p then #[] else #[p]
-  let (qs, rest) ← factorizer.decompose (p - 1)
-  let qs := if rest == 1 then qs else qs.push rest
-  let some a ← rootFinder p qs | return #[p]
-  if Nat.powMod a (p - 1) p != 1 then
-    return #[p]
-  let mut blocked := #[]
-  for q in qs do
-    blocked := blocked ++ (← findLucasCerts factorizer rootFinder known q)
-  if blocked.isEmpty then
-    modify (·.insert p ⟨a, qs⟩)
-  return blocked
+/-- Searches for a Lucas witness for `q`, a value met while proving `p` prime. The part of `q - 1`
+that the factorizer leaves is taken to be prime. -/
+def findLucasWitness (factorizer : Factorizer) (rootFinder : PrimitiveRootFinder) (p q : Nat) :
+    CoreM LucasWitness := do
+  let (factors, rest) ← factorizer.decompose (q - 1)
+  let factors := if rest == 1 then factors else factors.push rest
+  let some root ← rootFinder q factors | do
+    if q == p then
+      throwError "primality is unable to find a primitive root for {p}; \
+        primitive roots can be provided at `.lucas \{ roots := … }` if {p} is prime."
+    throwError "primality could not find factors for the intermediate value {q}; factors can \
+      be provided at `.lucas \{ factors := … }`. In the rare case that it is prime, add a \
+      primitive root of it to `.lucas \{ roots := … }`."
+  return { root, factors }
 
 end Mathlib.Tactic.Primality
