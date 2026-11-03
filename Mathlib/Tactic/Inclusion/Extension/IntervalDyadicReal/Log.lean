@@ -25,41 +25,40 @@ namespace Inclusion
 
 namespace IntervalDyadicReal
 
-/-- The factor `N` of the numerator and the factor `P` of the denominator in
-`∑ i ∈ range n, (a / b) ^ (2 * i + 1) / (2 * i + 1) = a * N / (b ^ (2 * n + 1) * P)`. -/
+/-- The fraction `N / P` for the `arctanh` series
+`∑ i ∈ range n, (a / b) ^ (2 * i + 1) / (2 * i + 1) = a / b ^ (2 * n + 1) * (N / P))`
+after separating the common factor out. -/
 @[expose]
-def artanhPartialSumNumDenom (a b n : ℕ) : ℕ × ℕ :=
+def artanhNumDenom (a b n : ℕ) : ℕ × ℕ :=
   match n with
   | 0 => (0, 1)
   | n + 1 =>
-    let p := artanhPartialSumNumDenom a b n
+    let p := artanhNumDenom a b n
     ((p.1 * (2 * n + 1) + a ^ (2 * n) * p.2) * b ^ 2, p.2 * (2 * n + 1))
 
-theorem artanhPartialSumNumDenom_snd_pos (a b n : ℕ) :
-    0 < (artanhPartialSumNumDenom a b n).2 := by
-  induction n <;> simp [artanhPartialSumNumDenom, *]
+theorem artanhNumDenom_snd_pos (a b n : ℕ) : 0 < (artanhNumDenom a b n).2 := by
+  induction n <;> simp [artanhNumDenom, *]
 
-theorem artanhPartialSumNumDenom_div (a : ℤ) {b : ℕ} (hb : b ≠ 0) (n : ℕ) :
-    (a : ℝ) * (artanhPartialSumNumDenom a.natAbs b n).1 /
-        (b ^ (2 * n + 1) * (artanhPartialSumNumDenom a.natAbs b n).2) =
+theorem artanhNumDenom_div (a : ℤ) {b : ℕ} (hb : b ≠ 0) (n : ℕ) :
+    (a : ℝ) * (artanhNumDenom a.natAbs b n).1 /
+        (b ^ (2 * n + 1) * (artanhNumDenom a.natAbs b n).2) =
       ∑ i ∈ range n, ((a : ℝ) / b) ^ (2 * i + 1) / (2 * i + 1) := by
   induction n with
-  | zero => simp [artanhPartialSumNumDenom]
+  | zero => simp [artanhNumDenom]
   | succ n ih =>
-    have hP := (artanhPartialSumNumDenom_snd_pos a.natAbs b n).ne'
-    rw [sum_range_succ, ← ih, artanhPartialSumNumDenom]
+    have hP := (artanhNumDenom_snd_pos a.natAbs b n).ne'
+    rw [sum_range_succ, ← ih, artanhNumDenom]
     push_cast [Nat.cast_natAbs, pow_mul, sq_abs, div_pow]
     field_simp
     ring
 
 /-- The remainder bound of `Real.sum_range_sub_log_div_le` for the first `n` terms of
-`log (a / b) = 2 ∑ i, z ^ (2 * i + 1) / (2 * i + 1)` with `z = (a - b) / (a + b)`. -/
-theorem abs_log_div_sub_le_of_artanhPartialSumNumDenom_eq {a b : ℕ} (ha : 0 < a) (hb : 0 < b)
-    (n : ℕ) {p : ℕ × ℕ}
-    (hp : artanhPartialSumNumDenom (a - b : ℤ).natAbs (a + b) n = p) :
-    |Real.log (a / b) - 2 * ((a - b : ℤ) : ℝ) * p.1 / ((a + b : ℕ) ^ (2 * n + 1) * p.2)| ≤
-      |((a - b : ℤ) : ℝ)| ^ (2 * n + 1) * (a + b : ℕ) ^ 2 /
-        (2 * a * b * (a + b : ℕ) ^ (2 * n + 1)) := by
+`1 / 2 * log (a / b) = ∑ i, z ^ (2 * i + 1) / (2 * i + 1)` with `z = s / t`. -/
+theorem artanhNumDenom_remainder_bound {a b t : ℕ} {s : ℤ} (ha : 0 < a) (hb : 0 < b)
+    (hs : s = a - b) (ht : t = a + b) (n : ℕ) {p : ℕ × ℕ} (hp : artanhNumDenom s.natAbs t n = p) :
+    |1 / 2 * Real.log (a / b) - s * p.1 / (t ^ (2 * n + 1) * p.2)| ≤
+      |(s : ℝ)| ^ (2 * n + 1) * t ^ 2 / (4 * a * b * t ^ (2 * n + 1)) := by
+  subst hs ht
   have ha₀ : (0 : ℝ) < a := by exact_mod_cast ha
   have hb₀ : (0 : ℝ) < b := by exact_mod_cast hb
   set x : ℝ := ((a - b : ℤ) : ℝ) / (a + b : ℕ) with hx
@@ -78,28 +77,21 @@ theorem abs_log_div_sub_le_of_artanhPartialSumNumDenom_eq {a b : ℕ} (ha : 0 < 
     field_simp
     ring
   have key := Real.sum_range_sub_log_div_le hx1 n
-  rw [hx, ← artanhPartialSumNumDenom_div _ (by positivity), ← hx, h1, h2, hp] at key
-  calc _ = 2 * |1 / 2 * Real.log (a / b) -
-        ((a - b : ℤ) : ℝ) * p.1 / ((a + b : ℕ) ^ (2 * n + 1) * p.2)| := by
-        rw [← abs_two, ← abs_mul]
-        congr 1
-        ring
-    _ ≤ 2 * (|x| ^ (2 * n + 1) / (4 * a * b / (a + b) ^ 2)) := by gcongr
-    _ = _ := by
-        rw [hx, abs_div, Nat.abs_cast, div_pow]
-        push_cast
-        field_simp
-        ring
+  rw [hx, ← artanhNumDenom_div _ (by positivity), ← hx, h1, h2, hp] at key
+  refine key.trans_eq ?_
+  rw [hx, abs_div, Nat.abs_cast, div_pow]
+  push_cast
+  field_simp
 
 /-- An enclosure of `log (a / b) + e * log 2` by `n₁` terms of the series of
-`abs_log_div_sub_le_of_artanhPartialSumNumDenom_eq` for `log (a / b)` and `n₂` terms of that for
+`artanhNumDenom_remainder_bound` for `log (a / b)` and `n₂` terms of that for
 `log 2 = log (2 / 1)`, summed over a common denominator and rounded outward to precision `prec`. -/
 @[expose]
 def logRatSeries (a b : ℕ) (e : ℤ) (n₁ n₂ prec : ℕ) : Interval Dyadic :=
   let s : ℤ := a - b
   let t := a + b
-  let p := artanhPartialSumNumDenom s.natAbs t n₁
-  let q := artanhPartialSumNumDenom 1 3 n₂
+  let p := artanhNumDenom s.natAbs t n₁
+  let q := artanhNumDenom 1 3 n₂
   let d₁ := t ^ (2 * n₁ + 1) * p.2
   let d₂ := 3 ^ (2 * n₂ + 1) * q.2
   ratBall (8 * a * b * (s * p.1 * d₂ + e * q.1 * d₁))
@@ -108,17 +100,19 @@ def logRatSeries (a b : ℕ) (e : ℤ) (n₁ n₂ prec : ℕ) : Interval Dyadic 
 
 theorem logRatSeries_mem {a b : ℕ} (ha : 0 < a) (hb : 0 < b) (e : ℤ) (n₁ n₂ prec : ℕ) :
     Real.log (a / b) + e * Real.log 2 ∈ logRatSeries a b e n₁ n₂ prec := by
-  have h₁ := abs_log_div_sub_le_of_artanhPartialSumNumDenom_eq ha hb n₁ rfl
-  have h₂ := abs_log_div_sub_le_of_artanhPartialSumNumDenom_eq (a := 2) (b := 1) (by norm_num)
-    (by norm_num) n₂ (p := artanhPartialSumNumDenom 1 3 n₂) rfl
-  have hP := artanhPartialSumNumDenom_snd_pos (a - b : ℤ).natAbs (a + b) n₁
-  have hQ := artanhPartialSumNumDenom_snd_pos 1 3 n₂
+  have h₁ := artanhNumDenom_remainder_bound ha hb rfl rfl n₁ rfl
+  have h₂ := artanhNumDenom_remainder_bound (a := 2) (b := 1) (by norm_num) (by norm_num)
+    rfl rfl n₂ (p := artanhNumDenom 1 3 n₂) rfl
+  have hP := artanhNumDenom_snd_pos (a - b : ℤ).natAbs (a + b) n₁
+  have hQ := artanhNumDenom_snd_pos 1 3 n₂
   refine ratBall_mem ?_ prec
   norm_num at h₂
   push_cast at h₁ ⊢
-  have h₃ := mul_le_mul_of_nonneg_left h₂ (abs_nonneg (e : ℝ))
-  rw [← abs_mul] at h₃
-  convert (abs_add_le _ _).trans (add_le_add h₁ h₃) using 2 <;>
+  have h₃ := mul_le_mul_of_nonneg_left h₁ (abs_nonneg (2 : ℝ))
+  have h₄ := mul_le_mul_of_nonneg_left h₂ (abs_nonneg (2 * e : ℝ))
+  rw [← abs_mul] at h₃ h₄
+  rw [abs_mul 2 (e : ℝ)] at h₄
+  convert (abs_add_le _ _).trans (add_le_add h₃ h₄) using 2 <;>
   · field_simp
     ring
 
