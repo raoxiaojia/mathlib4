@@ -25,8 +25,8 @@ namespace Inclusion
 
 namespace IntervalDyadicReal
 
-/-- The fraction `N / P` for the `arctanh` series
-`∑ i ∈ range n, (a / b) ^ (2 * i + 1) / (2 * i + 1) = a / b ^ (2 * n + 1) * (N / P))`
+/-- The fraction `N / P` for the `artanh` series
+`∑ i ∈ range n, (a / b) ^ (2 * i + 1) / (2 * i + 1) = a / b ^ (2 * n + 1) * (N / P)`
 after separating the common factor out. -/
 @[expose]
 def artanhNumDenom (a b n : ℕ) : ℕ × ℕ :=
@@ -53,89 +53,99 @@ theorem artanhNumDenom_div (a : ℤ) {b : ℕ} (hb : b ≠ 0) (n : ℕ) :
     ring
 
 /-- The remainder bound of `Real.sum_range_sub_log_div_le` for the first `n` terms of
-`1 / 2 * log (a / b) = ∑ i, z ^ (2 * i + 1) / (2 * i + 1)` with `z = s / t`. -/
+`1 / 2 * log (a / b) = ∑ i, z ^ (2 * i + 1) / (2 * i + 1)` with `z = (a - b) / (a + b)`. -/
 theorem artanhNumDenom_remainder_bound {a b t : ℕ} {s : ℤ} (ha : 0 < a) (hb : 0 < b)
     (hs : s = a - b) (ht : t = a + b) (n : ℕ) {p : ℕ × ℕ} (hp : artanhNumDenom s.natAbs t n = p) :
     |1 / 2 * Real.log (a / b) - s * p.1 / (t ^ (2 * n + 1) * p.2)| ≤
       |(s : ℝ)| ^ (2 * n + 1) * t ^ 2 / (4 * a * b * t ^ (2 * n + 1)) := by
+  set z : ℝ := s / t with hz
   subst hs ht
   have ha₀ : (0 : ℝ) < a := by exact_mod_cast ha
   have hb₀ : (0 : ℝ) < b := by exact_mod_cast hb
-  set x : ℝ := ((a - b : ℤ) : ℝ) / (a + b : ℕ) with hx
-  have hx1 : |x| < 1 := by
-    rw [hx, abs_div, Nat.abs_cast, div_lt_one (by positivity), abs_lt]
+  have hz1 : |z| < 1 := by
+    rw [hz, abs_div, Nat.abs_cast, div_lt_one (by positivity), abs_lt]
     push_cast
     constructor <;> linarith
-  have h1 : (1 + x) / (1 - x) = a / b := by
-    rw [div_eq_div_iff (sub_pos.mpr (abs_lt.mp hx1).2).ne' hb₀.ne', hx]
+  have h1 : (1 + z) / (1 - z) = a / b := by
+    rw [div_eq_div_iff (sub_pos.mpr (abs_lt.mp hz1).2).ne' hb₀.ne', hz]
     push_cast
     field_simp
     ring
-  have h2 : 1 - x ^ 2 = 4 * a * b / (a + b) ^ 2 := by
-    rw [hx]
+  have h2 : 1 - z ^ 2 = 4 * a * b / (a + b) ^ 2 := by
+    rw [hz]
     push_cast
     field_simp
     ring
-  have key := Real.sum_range_sub_log_div_le hx1 n
-  rw [hx, ← artanhNumDenom_div _ (by positivity), ← hx, h1, h2, hp] at key
+  have key := Real.sum_range_sub_log_div_le hz1 n
+  rw [hz, ← artanhNumDenom_div _ (by positivity), ← hz, h1, h2, hp] at key
   refine key.trans_eq ?_
-  rw [hx, abs_div, Nat.abs_cast, div_pow]
+  rw [hz, abs_div, Nat.abs_cast, div_pow]
   push_cast
   field_simp
 
-/-- An enclosure of `log (a / b) + e * log 2` by `n₁` terms of the series of
+/-- An enclosure of `log (a / b) + k * log 2` by `n₁` terms of the series of
 `artanhNumDenom_remainder_bound` for `log (a / b)` and `n₂` terms of that for
 `log 2 = log (2 / 1)`, summed over a common denominator and rounded outward to precision `prec`. -/
 @[expose]
-def logRatSeries (a b : ℕ) (e : ℤ) (n₁ n₂ prec : ℕ) : Interval Dyadic :=
+def logRatSeries (a b : ℕ) (k : ℤ) (n₁ n₂ prec : ℕ) : Interval Dyadic :=
+  -- partial sum of `artanh ((a - b) / (a + b)) = 1 / 2 * log (a / b)`
   let s : ℤ := a - b
   let t := a + b
   let p := artanhNumDenom s.natAbs t n₁
-  let q := artanhNumDenom 1 3 n₂
   let d₁ := t ^ (2 * n₁ + 1) * p.2
+  -- partial sum of `artanh (1 / 3) = 1 / 2 * log 2`
+  let q := artanhNumDenom 1 3 n₂
   let d₂ := 3 ^ (2 * n₂ + 1) * q.2
-  ratBall (8 * a * b * (s * p.1 * d₂ + e * q.1 * d₁))
-    (2 * s.natAbs ^ (2 * n₁ + 1) * t ^ 2 * p.2 * d₂ + 9 * a * b * e.natAbs * q.2 * d₁ : ℕ)
-    (4 * a * b * d₁ * d₂) prec
+  let center := 8 * a * b * (s * p.1 * d₂ + k * q.1 * d₁)
+  let radius : ℕ := 2 * s.natAbs ^ (2 * n₁ + 1) * t ^ 2 * p.2 * d₂ + 9 * a * b * k.natAbs * q.2 * d₁
+  ratBall center radius (4 * a * b * d₁ * d₂) prec
 
-theorem logRatSeries_mem {a b : ℕ} (ha : 0 < a) (hb : 0 < b) (e : ℤ) (n₁ n₂ prec : ℕ) :
-    Real.log (a / b) + e * Real.log 2 ∈ logRatSeries a b e n₁ n₂ prec := by
-  have h₁ := artanhNumDenom_remainder_bound ha hb rfl rfl n₁ rfl
-  have h₂ := artanhNumDenom_remainder_bound (a := 2) (b := 1) (by norm_num) (by norm_num)
-    rfl rfl n₂ (p := artanhNumDenom 1 3 n₂) rfl
-  have hP := artanhNumDenom_snd_pos (a - b : ℤ).natAbs (a + b) n₁
-  have hQ := artanhNumDenom_snd_pos 1 3 n₂
-  refine ratBall_mem ?_ prec
+theorem logRatSeries_mem {a b : ℕ} (ha : 0 < a) (hb : 0 < b) (k : ℤ) (n₁ n₂ prec : ℕ) :
+    Real.log (a / b) + k * Real.log 2 ∈ logRatSeries a b k n₁ n₂ prec := by
+  unfold logRatSeries
+  -- The proof can be shorter, but this makes the intermediate proof state a bit more readable.
+  extract_lets s t p d₁ q d₂ center radius
+  have h₁ := artanhNumDenom_remainder_bound (s := s) (t := t) (p := p) ha hb rfl rfl n₁ rfl
+  have h₂ := artanhNumDenom_remainder_bound (a := 2) (b := 1) (p := q) (by norm_num) (by norm_num)
+    rfl rfl n₂ rfl
   norm_num at h₂
-  push_cast at h₁ ⊢
+  have hP : 0 < p.2 := artanhNumDenom_snd_pos (a - b : ℤ).natAbs (a + b) n₁
+  have hQ : 0 < q.2 := artanhNumDenom_snd_pos 1 3 n₂
+  have ht : 0 < t := Nat.add_pos_left ha b
+  refine ratBall_mem ?_ prec
   have h₃ := mul_le_mul_of_nonneg_left h₁ (abs_nonneg (2 : ℝ))
-  have h₄ := mul_le_mul_of_nonneg_left h₂ (abs_nonneg (2 * e : ℝ))
+  have h₄ := mul_le_mul_of_nonneg_left h₂ (abs_nonneg (2 * k : ℝ))
   rw [← abs_mul] at h₃ h₄
-  rw [abs_mul 2 (e : ℝ)] at h₄
+  rw [abs_mul 2 (k : ℝ)] at h₄
+  -- dirty part
   convert (abs_add_le _ _).trans (add_le_add h₃ h₄) using 2 <;>
-  · field_simp
+  · simp only [center, radius, d₁, d₂]
+    push_cast
+    field_simp
     ring
 
 /-- An enclosure of `log x` within about `2 ^ (-prec)`, by `logRatSeries` after writing `|x|` as
-`2 ^ e * y` with `y ∈ [1 / √2, √2)`. -/
+`2 ^ m * y` with `y ∈ [1 / √2, √2)`. -/
 @[expose]
 def logPoint (x : Dyadic) (prec : ℕ) : Interval Dyadic :=
   match x with
   | .zero => Interval.singleton 0
   | .ofOdd n k _ =>
+    -- `|x| = 2 ^ m * y` with `y = u / 2 ^ j ∈ [1 / √2, √2)`
     let u := n.natAbs
-    -- `y = u / 2 ^ j ∈ [1 / √2, √2)` and `x = ± 2 ^ e * y`.
     let j := if 2 * 4 ^ u.log2 ≤ u ^ 2 then u.log2 + 1 else u.log2
-    let e : ℤ := j - k
+    let m : ℤ := j - k
+    -- terms of `artanh (s / t) = 1 / 2 * log y` until the remainder is below `2 ^ (-prec - 3)`,
+    -- each gaining `bits` bits since `|s / t| ≤ 2 ^ (-r)` for `r = ⌊log₂ ⌊t / |s|⌋⌋` and
+    -- `|s / t| ≤ 3 - 2√2 < 2 ^ (-5 / 2)`
     let s : ℤ := u - 2 ^ j
-    -- Each series stops once its remainder bound is below `2 ^ (-prec - 3)`, and is skipped when
-    -- it does not contribute. The series of `y` has `z = s / (u + 2 ^ j)`, and each of its terms
-    -- gains `max 5 (2 m)` bits for `m = ⌊log₂ ⌊(u + 2 ^ j) / |s|⌋⌋`, since `|z| ≤ 2 ^ (-m)` and
-    -- `|z| ≤ 3 - 2√2 < 2 ^ (-5 / 2)`. The series of `log 2` has `z = 1 / 3` and its remainder bound
-    -- is `(3 / 4) 9 ^ (-n₂)`, scaled by `|e|`.
-    let n₁ := if s = 0 then 0 else (prec + 3) / max 5 (2 * ((u + 2 ^ j) / s.natAbs).log2) + 1
-    let n₂ := if e = 0 then 0 else (prec + e.natAbs.log2 + 4) / 3 + 1
-    logRatSeries u (2 ^ j) e n₁ n₂ prec
+    let t := u + 2 ^ j
+    let bits := max 5 (2 * (t / s.natAbs).log2)
+    let n₁ := if s = 0 then 0 else (prec + 3) / bits + 1
+    -- terms of `artanh (1 / 3) = 1 / 2 * log 2`, each gaining 3 bits, with the remainder bound
+    -- `(3 / 4) 9 ^ (-n₂)` scaled by `|m|`
+    let n₂ := if m = 0 then 0 else (prec + m.natAbs.log2 + 4) / 3 + 1
+    logRatSeries u (2 ^ j) m n₁ n₂ prec
 
 theorem logPoint_mem (x : Dyadic) (prec : ℕ) : Real.log x.toReal ∈ logPoint x prec := by
   cases x with
@@ -144,8 +154,11 @@ theorem logPoint_mem (x : Dyadic) (prec : ℕ) : Real.log x.toReal ∈ logPoint 
       Interval.mem_map_singleton (0 : Dyadic) Dyadic.toReal
   | ofOdd n k hn =>
     have hn0 : n ≠ 0 := by lia
-    have key (j : ℕ) : Real.log (Dyadic.ofOdd n k hn).toReal =
-        Real.log ((n.natAbs : ℝ) / (2 ^ j : ℕ)) + ((j - k : ℤ) : ℝ) * Real.log 2 := by
+    dsimp -zeta only [logPoint]
+    extract_lets u j m s t bits n₁ n₂
+    have key :
+        Real.log (Dyadic.ofOdd n k hn).toReal = Real.log (u / (2 ^ j : ℕ)) + m * Real.log 2 := by
+      simp only [u, m]
       rw [Dyadic.toReal, Dyadic.toRat_ofOdd_eq_mul_two_pow]
       push_cast
       rw [Real.log_mul (by exact_mod_cast hn0) (by positivity), Real.log_zpow,
@@ -153,7 +166,6 @@ theorem logPoint_mem (x : Dyadic) (prec : ℕ) : Real.log x.toReal ∈ logPoint 
         Real.log_abs]
       push_cast
       ring
-    dsimp only [logPoint]
     rw [key]
     exact logRatSeries_mem (Int.natAbs_pos.mpr hn0) (by positivity) _ _ _ prec
 
