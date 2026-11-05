@@ -11,7 +11,7 @@ public import Mathlib.Tactic.Primality.Producers
 # `primality`
 
 Defines the frontend of the `primality` tactic, which closes goals `Nat.Prime n` using a
-certificate constructed from witnesses it takes from the user.
+certificate constructed from witnesses it finds itself or takes from the user.
 -/
 
 public meta section
@@ -23,7 +23,7 @@ namespace Mathlib.Tactic.Primality
 /-- Configuration for `primality`. -/
 structure Config where
   /-- The certificate configuration to use. -/
-  cert : CertMode := .witnesses []
+  cert : CertMode := .search {}
 
 /-- Function elaborating `Config`. -/
 declare_config_elab elabPrimalityConfig Config
@@ -50,11 +50,15 @@ def elabKnownPrimes (hs : Array Term) : TacticM (Std.HashMap ℕ Expr) := do
   return known
 
 /-- `primality` proves a goal `Nat.Prime n`, where `norm_num` evaluates `n` to a numeral, from a
-Lucas certificate given as a list of witnesses.
+Lucas certificate whose witnesses it searches for or takes from the user.
 
 A Lucas certificate proves `p` prime by a primitive root `a` of `p`, a number with
 `a ^ (p - 1) % p = 1` and `a ^ ((p - 1) / q) % p ≠ 1` for each prime factor `q` of `p - 1`. Each
 such `q` needs a certificate too, except for primes below `2 ^ 10` which are left to `norm_num`.
+
+By default the witnesses are searched for, factorizing each `p - 1` by trial division and Pollard's
+rho method, and `(cert := .search { factors := […] })` adds candidate prime factors to the search.
+`(cert := .witnesses […])` takes the witnesses from the user instead:
 
 ```lean
 example : Nat.Prime 1000003 := by
@@ -71,9 +75,11 @@ syntax (name := primality) "primality" optConfig (" [" term,* "]")? : tactic
 
 elab_rules : tactic
   | `(tactic| primality $cfg:optConfig $[[$hs,*]]?) => withMainContext do
-    let .witnesses witnesses := (← elabPrimalityConfig cfg).cert
-    let witnesses := witnesses.map fun (.lucas w) ↦
-      Witness.lucas { w with primeFactors := w.primeFactors.eraseDups }
+    let build : Std.HashSet ℕ → ℕ → CoreM Cert :=
+      match (← elabPrimalityConfig cfg).cert with
+      | .search searchCfg => Cert.search searchCfg
+      | .witnesses witnesses => Cert.ofWitnesses <| witnesses.map fun (.lucas w) ↦
+        Witness.lucas { w with primeFactors := w.primeFactors.eraseDups }
     let known ← elabKnownPrimes <| hs.map (·.getElems) |>.getD #[]
     liftMetaFinishingTactic fun g ↦ do
       let_expr Nat.Prime e := ← instantiateMVars (← g.getType) |
@@ -81,7 +87,7 @@ elab_rules : tactic
       have e : Q(ℕ) := e
       let some ⟨p, pQ, pn⟩ ← evalNumeral? e |
         throwError "{e} does not evaluate to a numeral; try simplifying it first"
-      let cert ← Cert.ofWitnesses witnesses (.ofArray known.keysArray) p
+      let cert ← build (.ofArray known.keysArray) p
       let hp : Q(Nat.Prime $pQ) ← StateT.run' (certifyPrime p cert) known
       g.assign q(isNat.natElim (p := Nat.Prime) $pn $hp)
 

@@ -1,10 +1,61 @@
 module
 
+import Mathlib.Data.Nat.Factorial.Basic
 import Mathlib.Tactic.NormNum.Pow
 
 import Mathlib.Tactic.Primality
 
 /-! # Tests for the `primality` tactic -/
+
+/-! ## Lucas certificates
+
+Proves `Nat.Prime p` by the Lucas test from a primitive root and certified prime factors of `p - 1`,
+with each of the intermediate primes proved the same way with the same factor hints, unless the user
+provides proofs.
+-/
+
+example : Nat.Prime 100000007 := by primality
+
+example : Nat.Prime (10 ^ 9 + 7) := by primality
+
+-- `p - 1 = 2 ^ 4 * 1031 ^ 2`, so Pollard's rho method finds the factor `1031` twice.
+example : Nat.Prime 17007377 := by primality
+
+/-- error: primality failed to find a witness for 100000000004900000000016761; provide the
+certificate at `.witnesses […]` -/
+#guard_msgs in
+example : Nat.Prime (2 * 10000000000037 * 10000000000453 + 1) := by primality
+
+example : Nat.Prime (2 * 10000000000037 * 10000000000453 + 1) := by
+  primality (cert := .search { factors := [10000000000037] })
+
+-- Pollard's rho method needs more than the default `2 ^ 17` steps to split
+-- `10000003003 * 100000000000031`.
+example : Nat.Prime (2 * 10000003003 * 100000000000031 + 1) := by
+  primality (cert := .search { rhoSteps := 2 ^ 18 })
+
+theorem prime_4398046517687 : Nat.Prime 4398046517687 := by primality
+
+-- Takes an already proven prime as a hint.
+example : Nat.Prime (2 * 4398046517687 * 10000000001437 + 1) := by
+  primality [prime_4398046517687]
+
+-- The same with a hypothesis.
+example (h : Nat.Prime 4398046517687) : Nat.Prime (2 * 4398046517687 * 10000000001437 + 1) := by
+  primality [h]
+
+/-! ## Special primes -/
+
+example : Nat.Prime (2 ^ 127 - 1) := by primality
+
+-- Only the last 3 factors are required, but 8 are included so the producer is faster.
+set_option exponentiation.threshold 521 in
+example : Nat.Prime (2 ^ 521 - 1) := by
+  primality (cert := .search { factors := [5746001, 7623851, 34110701, 308761441, 2400573761,
+    65427463921, 108140989558681, 145295143558111] })
+
+open Nat in
+example : Nat.Prime (73 ! + 1) := by simp [Nat.factorial]; primality
 
 /-! ## Certificates given by witnesses -/
 
@@ -67,6 +118,11 @@ example : Nat.Prime (2 ^ 255 - 19) := by
 /-- error: n does not evaluate to a numeral; try simplifying it first -/
 #guard_msgs in
 example (n : ℕ) : Nat.Prime n := by primality
+
+/-- error: primality failed to find a witness for 1000001; provide the certificate at
+`.witnesses […]` -/
+#guard_msgs in
+example : Nat.Prime 1000001 := by primality
 
 -- `2` is not a primitive root of `65537`, since `2 ^ 32 % 65537 = 1`.
 /-- error: no provided witness certifies the primality of 65537 -/
