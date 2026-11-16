@@ -113,6 +113,24 @@ theorem Real.sin_eq_tsum (r : ℝ) :
     Real.sin r = ∑' n : ℕ, (-1) ^ n * r ^ (2 * n + 1) / ↑(2 * n + 1)! :=
   (Real.hasSum_sin r).tsum_eq.symm
 
+theorem Real.abs_sin_sub_sum_range_le {r : ℝ} (hr : |r| ≤ 1) (n : ℕ) :
+    |Real.sin r - ∑ m ∈ Finset.range n, (-1) ^ m * r ^ (2 * m + 1) / ↑(2 * m + 1)!| ≤
+      |r| ^ (2 * n + 1) / ↑(2 * n + 1)! := by
+  wlog hr0 : 0 ≤ r generalizing r
+  · have h := this (r := -r) (by rwa [abs_neg]) (by linarith)
+    simp only [Real.sin_neg, Odd.neg_pow (odd_two_mul_add_one _), neg_div, mul_neg,
+      Finset.sum_neg_distrib, abs_neg] at h
+    rwa [neg_sub_neg, abs_sub_comm] at h
+  rw [abs_of_nonneg hr0] at hr ⊢
+  have hfa : Antitone fun m : ℕ ↦ r ^ (2 * m + 1) / ↑(2 * m + 1)! := by
+    refine antitone_nat_of_succ_le fun m ↦ ?_
+    refine div_le_div₀ (by positivity) (pow_le_pow_of_le_one hr0 hr (by lia)) (by positivity) ?_
+    exact_mod_cast Nat.factorial_le (by lia)
+  have hfs : Summable fun m : ℕ ↦ r ^ (2 * m + 1) / ↑(2 * m + 1)! :=
+    (Real.summable_pow_div_factorial r).comp_injective fun a b h ↦ by simpa using h
+  simpa only [← mul_div_assoc, (Real.hasSum_sin r).tsum_eq] using
+    alternating_series_error_bound _ hfa hfs n
+
 end SinCos
 
 /-! ### `cosh` and `sinh` for `ℝ` and `ℂ` -/
