@@ -38,6 +38,8 @@ namespace Inclusion
 namespace IntervalDyadicReal
 open Inclusion.IntervalDyadicReal
 
+/-! ### Enclosures at a point -/
+
 /-- The numerator of the partial Taylor sum
 `∑ m ∈ range n, (-1) ^ m * (a / b) ^ (2 * m + 1) / (2 * m + 1)!` as an unreduced fraction over the
 common denominator `b ^ (2 * n + 1) * (2 * n + 1)!`. -/
@@ -152,6 +154,13 @@ theorem cosPoint_mem (x : Dyadic) (prec : ℕ) : Real.cos x.toReal ∈ cosPoint 
     ring
   rw [hx, Real.cos_two_mul_eq_one_sub]
   exact sub_mem h1 (mul_mem (ofNat_mem 2) (pow_mem 2 (sinPoint_mem _ _)))
+
+/-! ### Enclosures on an interval
+
+An interval narrower than `π` is enclosed from `sin` and `cos` at its endpoints. A bound is
+replaced by `±1` unless the signs of `cos` rule out an extremum inside. Wider intervals are
+bisected.
+-/
 
 /-- On an interval `[l, u]` shorter than `π`, `Real.sin` has no interior maximum when `cos l ≤ 0`,
 when `0 ≤ cos u`, or when it is negative at both endpoints. -/
