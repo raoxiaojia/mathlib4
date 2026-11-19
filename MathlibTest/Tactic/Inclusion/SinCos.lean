@@ -5,7 +5,7 @@ Authors: Rao Xiaojia
 -/
 module
 
-meta import Mathlib.Tactic.Inclusion.Extension.IntervalDyadicReal.Sin
+meta import Mathlib.Tactic.Inclusion.Extension.IntervalDyadicReal.SinCos
 
 import Mathlib.Tactic.Inclusion.Extension.IntervalDyadicReal.Tactic
 
@@ -28,5 +28,8 @@ example {x : ℝ} (h₁ : 1.65 ≤ x) (h₂ : x ≤ 7.75) : Real.sin x < 0.998 :
 example {x : ℝ} (h₁ : 0 ≤ x) (h₂ : x ≤ 8) : Real.sin x ≤ 1 := by dyadic_interval
 
 example (x : ℝ) : Real.sin x ≤ 1 := by dyadic_interval
+
+example {x : ℝ} (h₁ : 3 ≤ x) (h₂ : x ≤ 3.3) : Real.cos x < -0.98 := by
+  dyadic_interval [prec := 9]
 
 end Inclusion.Tests

@@ -6,23 +6,24 @@ Authors: Rao Xiaojia
 module
 
 public import Mathlib.Analysis.SpecialFunctions.Trigonometric.Basic
-public import Mathlib.Analysis.SpecialFunctions.Trigonometric.Series
+public import Mathlib.Tactic.Inclusion.Extension.IntervalDyadicReal.BinarySplit
 public import Mathlib.Tactic.Inclusion.Extension.IntervalDyadicReal.Rational
 
 import Mathlib.Analysis.Calculus.LocalExtr.Basic
 import Mathlib.Analysis.Real.Pi.Bounds
+import Mathlib.Analysis.SpecialFunctions.Trigonometric.Series
 
 /-!
-# Sine enclosures for interval_dyadic_real
+# Sine and cosine enclosures for interval_dyadic_real
 
-This file defines an inclusion operation for the `interval_dyadic_real` inclusion family that
-encloses `Real.sin` of an interval.
+This file defines inclusion operations for the `interval_dyadic_real` inclusion family that
+enclose `Real.sin` and `Real.cos` of an interval.
 
 ## Implementation notes
 
 The sine of a point `x` is computed by enclosing `sin (x / 3 ^ k)` with a Taylor partial sum and
-then applying the triple-angle formula `sin (3 * y) = 3 * sin y - 4 * sin y ^ 3` to it `k` times in
-interval arithmetic, without using periodicity currently.
+then applying the triple-angle formula `sin (3 * y) = 3 * sin y - 4 * sin y ^ 3` to it `k` times.
+Periodicity is not used yet.
 
 This file is opt-in so that `dyadic_interval` doesn't import unnecessary theories.
 -/
@@ -108,7 +109,7 @@ Some relevant precision constants are chosen as follows:
 - `k = ⌊log₂ (⌊|x|⌋ + 1)⌋ + 3 + e`, so that `|x / 3 ^ k| < 2 ^ (-3 - e)`. The number `e` of
   extra steps grows as `√prec` to balance the cost of the triple-angle steps against that of the
   Taylor terms. With `e = 0`, about `prec / 8` terms are needed, and from about `16000` bits their
-  recursion is too deep for the kernel.
+  recursion exceeds the default `maxRecDepth`.
 - `precTaylor` adds `4` bits per triple-angle step to `prec` (a step widens an interval by a factor
   of at most `15`) and `8` more bits so that the result has width at most `2 ^ (-prec)`.
 - `taylorTerms` terms bring the remainder below `2 ^ (-precTaylor)`, since each term shrinks it by
@@ -140,7 +141,8 @@ theorem sinPoint_mem (x : Dyadic) (prec : ℕ) : Real.sin x.toReal ∈ sinPoint 
   exact roundOut_mem (sinTripleAngle_mem (sinRatTaylor_mem _ (by positivity) hab _ _) k _) _
 
 /-- An enclosure of `cos x`, computed from `sinPoint (x / 2)` by
-`cos x = 1 - 2 * sin (x / 2) ^ 2`. -/
+`cos x = 1 - 2 * sin (x / 2) ^ 2`. `sinPoint` gets `2` extra bits since `1 - 2 * s ^ 2` multiplies
+an error in `s` by at most `4`. -/
 @[expose]
 def cosPoint (x : Dyadic) (prec : ℕ) : Interval Dyadic :=
   (Interval.singleton 1).sub
@@ -157,31 +159,24 @@ theorem cosPoint_mem (x : Dyadic) (prec : ℕ) : Real.cos x.toReal ∈ cosPoint 
 
 /-! ### Enclosures on an interval
 
-An interval narrower than `π` is enclosed from `sin` and `cos` at its endpoints. A bound is
-replaced by `±1` unless the signs of `cos` rule out an extremum inside. Wider intervals are
-bisected.
+An interval narrower than `π` contains at most one extremum of `sin`. It is enclosed from `sin`
+and `cos` at its endpoints. A bound is replaced by `±1` unless their signs rule out an extremum
+inside.
 -/
 
-/-- On an interval `[l, u]` shorter than `π`, `Real.sin` has no interior maximum when `cos l ≤ 0`,
-when `0 ≤ cos u`, or when it is negative at both endpoints. -/
 theorem sin_le_max_of_cos_nonpos_or_cos_nonneg_or_sin_neg {l u x : ℝ} (hlx : l ≤ x)
     (hxu : x ≤ u) (hw : u - l < Real.pi)
     (h : (Real.cos l ≤ 0 ∨ 0 ≤ Real.cos u) ∨ (Real.sin l < 0 ∧ Real.sin u < 0)) :
     Real.sin x ≤ max (Real.sin l) (Real.sin u) := by
   by_contra! hlt
-  obtain ⟨c, hc, hmax⟩ :=
+  obtain ⟨c, ⟨hlc, hcu⟩, hmax⟩ :=
     isCompact_Icc.exists_isMaxOn ⟨x, hlx, hxu⟩ Real.continuous_sin.continuousOn
   have hxc : Real.sin x ≤ Real.sin c := hmax ⟨hlx, hxu⟩
-  have hlc : l < c := hc.1.lt_of_ne <| by
-    rintro rfl
-    linarith [le_max_left (Real.sin l) (Real.sin u)]
-  have hcu : c < u := hc.2.lt_of_ne <| by
-    rintro rfl
-    linarith [le_max_right (Real.sin l) (Real.sin c)]
+  replace hlc : l < c := by grind
+  replace hcu : c < u := by grind
   have hcos : Real.cos c = 0 :=
     (hmax.isLocalMax (Icc_mem_nhds hlc hcu)).hasDerivAt_eq_zero (Real.hasDerivAt_sin c)
-  have hsin : Real.sin c = 1 := (Real.cos_eq_zero_iff_sin_eq.mp hcos).resolve_right fun h ↦ by
-    linarith [Real.neg_one_le_sin l, le_max_left (Real.sin l) (Real.sin u)]
+  have hsin : Real.sin c = 1 := by grind [Real.cos_eq_zero_iff_sin_eq, Real.neg_one_le_sin]
   have h1 : 0 < Real.cos l := by
     simpa [Real.sin_sub, hsin, hcos] using Real.sin_pos_of_pos_of_lt_pi (x := c - l)
       (by linarith) (by linarith)
@@ -196,10 +191,8 @@ theorem sin_le_max_of_cos_nonpos_or_cos_nonneg_or_sin_neg {l u x : ℝ} (hlx : l
     · right
       simpa [Real.cos_sub, hsin, hcos] using
         Real.cos_pos_of_mem_Ioo (x := u - c) ⟨by linarith [Real.pi_pos], by linarith⟩
-  rcases h3 with h3 | h3 <;> rcases h with (h | h) | ⟨h4, h5⟩ <;> linarith
+  grind
 
-/-- On an interval `[l, u]` shorter than `π`, `Real.sin` has no interior minimum when `0 ≤ cos l`,
-when `cos u ≤ 0`, or when it is positive at both endpoints. -/
 theorem min_le_sin_of_cos_nonneg_or_cos_nonpos_or_sin_pos {l u x : ℝ} (hlx : l ≤ x)
     (hxu : x ≤ u) (hw : u - l < Real.pi)
     (h : (0 ≤ Real.cos l ∨ Real.cos u ≤ 0) ∨ (0 < Real.sin l ∧ 0 < Real.sin u)) :
@@ -211,8 +204,8 @@ theorem min_le_sin_of_cos_nonneg_or_cos_nonpos_or_sin_pos {l u x : ℝ} (hlx : l
       exacts [Or.inl (Or.inr h), Or.inl (Or.inl h), Or.inr ⟨h2, h1⟩]
   simpa [Real.sin_neg, max_neg_neg, min_comm] using this
 
-/-- An enclosure of `Real.sin` on `[l, u]` for `u - l < π`, from the enclosures of `sin` and `cos`
-at `l` and `u`. Each bound is the value at an endpoint unless an extremum may lie inside. -/
+/-- An enclosure of `Real.sin` on `[l, u]` for `u - l < π`. A bound is left open when an extremum
+may lie inside (`sin` clips it to `±1`). -/
 @[expose]
 def sinIcc (l u : Dyadic) (prec : ℕ) : Interval Dyadic :=
   let sl := sinPoint l prec
@@ -245,9 +238,7 @@ theorem sinIcc_mem {l u : Dyadic} {x : ℝ} (hlx : l.toReal ≤ x) (hxu : x ≤ 
           (IntervalBool.and_mem (lt_mem hz hsl) (lt_mem hz hsu)))
         (IntervalBool.eq_true_of_isTrue_eq_true h)
       have hmin := min_le_sin_of_cos_nonneg_or_cos_nonpos_or_sin_pos hlx hxu hw hc
-      have := hHl.1 a ha
-      have := hHu.1 a ha
-      rcases min_choice (Real.sin l.toReal) (Real.sin u.toReal) with hm | hm <;> linarith
+      exact (le_min (hHl.1 a ha) (hHu.1 a ha)).trans hmin
     · exact absurd ha WithBot.bot_ne_coe
   · intro a ha
     simp only [sinIcc] at ha
@@ -257,14 +248,11 @@ theorem sinIcc_mem {l u : Dyadic} {x : ℝ} (hlx : l.toReal ≤ x) (hxu : x ≤ 
           (IntervalBool.and_mem (lt_mem hsl hz) (lt_mem hsu hz)))
         (IntervalBool.eq_true_of_isTrue_eq_true h)
       have hmax := sin_le_max_of_cos_nonpos_or_cos_nonneg_or_sin_neg hlx hxu hw hc
-      have := hHl.2 a ha
-      have := hHu.2 a ha
-      rcases max_choice (Real.sin l.toReal) (Real.sin u.toReal) with hm | hm <;> linarith
+      exact hmax.trans (max_le (hHl.2 a ha) (hHu.2 a ha))
     · exact absurd ha WithTop.top_ne_coe
 
-/-- An enclosure of `Real.sin` on `I` (`sinPoint` for a point, and `sinIcc` for a bounded
-interval of width at most `3`, which is less than `π`), or `Interval.univ` for any other
-interval. -/
+/-- An enclosure of `Real.sin` on `I` by `sinPoint` for a point and by `sinIcc` for a bounded
+interval of width at most `3 < π` (`Interval.univ` otherwise). -/
 @[expose]
 def sinNarrow (I : Interval Dyadic) (prec : ℕ) : Interval Dyadic :=
   match I with
@@ -284,13 +272,13 @@ theorem sinNarrow_mem {x : ℝ} {I : Interval Dyadic} (hx : x ∈ I) (prec : ℕ
     split_ifs with he h3
     · subst he
       exact le_antisymm hxu hlx ▸ sinPoint_mem l prec
-    · have := Dyadic.toReal_le_toReal.mpr h3
-      simp only [Dyadic.toReal_add, Dyadic.toReal_ofNat] at this
+    · have h3 : u.toReal ≤ l.toReal + 3 := by simpa using Dyadic.toReal_le_toReal.mpr h3
       exact sinIcc_mem hlx hxu (by linarith [Real.pi_gt_three]) prec
     · exact Interval.mem_map_univ _ _
 
-/-- The sine of an interval, clipped to `[-1, 1]`. A bounded interval of width less than `7` (more
-than `2 * π`) is bisected into pieces of width at most `3`, each enclosed by `sinNarrow`. -/
+/-- The sine of an interval, clipped to `[-1, 1]`. A bounded interval of width less than `7` is
+bisected until its pieces have width at most `3`, each enclosed by `sinNarrow`. Any other interval
+is enclosed by `[-1, 1]`, which is exact since it is wider than `2 * π`. -/
 @[expose]
 def sin (I : Interval Dyadic) (prec : ℕ) : Interval Dyadic :=
   let depth := match I with
@@ -307,6 +295,25 @@ theorem sin_mem {x : ℝ} {I : Interval Dyadic} (hx : x ∈ I) (prec : ℕ) :
       (by simpa [Dyadic.toReal] using Real.sin_le_one x)
   exact Interval.inter_mem Dyadic.toRealOrderEmbedding
     (mem_binarySplitMap _ hx fun _ hJ ↦ sinNarrow_mem hJ prec) hC
+
+/-- The cosine of an interval, computed from `sin (I / 2)` by `cos x = 1 - 2 * sin (x / 2) ^ 2`.
+`sin (I / 2)` is evaluated at `prec + 3`, one bit more than `cosPoint` uses, for the final
+rounding. -/
+@[expose]
+def cos (I : Interval Dyadic) (prec : ℕ) : Interval Dyadic :=
+  let s := sin ((Interval.singleton ((1 : Dyadic) >>> (1 : ℕ))).mul I) (prec + 3)
+  roundOut ((Interval.singleton 1).sub ((Interval.singleton 2).mul (s.pow 2))) (prec + 1)
+
+@[inclusion_op interval_dyadic_real]
+theorem cos_mem {x : ℝ} {I : Interval Dyadic} (hx : x ∈ I) (prec : ℕ) :
+    Real.cos x ∈ cos I prec := by
+  have h1 : (1 : ℝ) ∈ Interval.singleton (1 : Dyadic) := by simpa using natCast_mem 1
+  have hh : (2⁻¹ : ℝ) ∈ Interval.singleton ((1 : Dyadic) >>> (1 : ℕ)) := by
+    simpa [mem_iff_mem_map, Dyadic.toReal, Dyadic.toRat_shiftRight_nat] using
+      Interval.mem_map_singleton ((1 : Dyadic) >>> (1 : ℕ)) Dyadic.toReal
+  have h := roundOut_mem
+    (sub_mem h1 (mul_mem (ofNat_mem 2) (pow_mem 2 (sin_mem (mul_mem hh hx) (prec + 3))))) (prec + 1)
+  rwa [← Real.cos_two_mul_eq_one_sub, mul_inv_cancel_left₀ two_ne_zero] at h
 
 end IntervalDyadicReal
 
